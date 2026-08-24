@@ -1,35 +1,24 @@
-# ABOUTME: Image ASR streaming cho Jetson AGX Thor - dựng trên base Triton nội bộ đã chạy thật trên máy này
-# ABOUTME: Công thức torch/onnxruntime-gpu và LD_LIBRARY_PATH lấy từ voice-agent-deployment/asr-triton (healthy 12+ ngày, cùng phần cứng)
+# ABOUTME: Image ASR streaming cho Jetson AGX Thor - base thẳng trên asr-triton:latest (đồng nghiệp, sản xuất 12+ ngày)
+# ABOUTME: Không apt-get/pip gì thêm - mọi dependency cần đã có sẵn trong base image, né hẳn proxy công ty chặn ports.ubuntu.com/nvidia
 
-# Image này KHÔNG có trên Docker Hub / NGC - nó đã nằm sẵn trong `docker images`
-# trên Thor (build cục bộ theo layer: cuda→python→numpy→cmake→onnx→pytorch→
-# pybind11→triton→tritonserver, khớp L4T R38.4.0 + CUDA 13.0 của máy). Nếu build
-# trên một con Thor khác chưa có image này, phải tự dựng lại chuỗi layer đó trước.
-ARG BASE_IMAGE=tritonserver:r38.4.arm64-sbsa-cu130-24.04
+# asr-triton:latest KHÔNG có trên Docker Hub / NGC - đã nằm sẵn trong `docker
+# images` trên Thor, do đồng nghiệp build từ voice-agent-deployment/asr-triton.
+# Nó đã có torch==2.9.1, torchaudio==2.9.1, onnxruntime-gpu, libsndfile1,
+# sentencepiece==0.2.0, và fix LD_LIBRARY_PATH cho Python backend stub - đúng
+# hệt những gì model.py/streaming_search.py của mình cần, không thiếu không thừa.
+# Dùng thẳng thay vì tự cài lại: tự cài từng đi qua apt-get/pip và bị proxy nội
+# bộ công ty chặn (ports.ubuntu.com 401, developer.download.nvidia.com cert lỗi).
+#
+# Rủi ro cần biết: image này do team khác kiểm soát. Họ rebuild/xoá là ASR của
+# mình build lại ra khác đi mà không ai báo. Nếu build trên Thor khác chưa có
+# image này, phải tự dựng lại theo docker/Dockerfile.thor.fallback (TODO nếu
+# cần) hoặc quay về base tritonserver:r38.4.arm64-sbsa-cu130-24.04 + tự cài.
+ARG BASE_IMAGE=asr-triton:latest
 FROM ${BASE_IMAGE}
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libsndfile1 \
-        && rm -rf /var/lib/apt/lists/*
-
-# Không dùng PyPI thường: wheel torch/onnxruntime-gpu ở đó không có bản aarch64
-# CUDA 13. Index này là nơi duy nhất đã kiểm chứng có cả hai trên chính Thor.
-RUN python3 -m pip install --no-cache-dir \
-        torch==2.9.1 torchaudio==2.9.1 onnxruntime-gpu \
-        --index-url https://pypi.jetson-ai-lab.io/sbsa/cu130
-
-# bpe.model của repo mình decode bằng sentencepiece - không có trong base image.
-RUN python3 -m pip install --no-cache-dir sentencepiece==0.2.0
-
-# Stub Python backend link nhầm libpython hệ thống (3.12.3) thay vì bản standalone
-# (3.12.13) đang chứa site-packages vừa cài ở trên - hai bên bất đồng module nào
-# là builtin (_contextvars), nên MỌI Python backend model gãy ngay lúc import
-# numpy. Không tự suy ra được từ lỗi; phát hiện từ voice-agent-deployment.
-ENV LD_LIBRARY_PATH=/opt/python/cpython-3.12-linux-aarch64-gnu/lib:${LD_LIBRARY_PATH}
 
 # Chốt lại: mọi import phải sạch, và CUDAExecutionProvider phải THẬT SỰ có mặt -
 # thiếu nó ORT âm thầm rơi về CPU, ASR vẫn chạy nhưng chậm gấp nhiều lần, không
-# ai biết cho đến khi đo latency.
+# ai biết cho đến khi đo latency. LD_LIBRARY_PATH đã được base image set sẵn.
 RUN python3 -c "\
         import numpy, torch, torchaudio, onnxruntime, sentencepiece; \
         providers = onnxruntime.get_available_providers(); \

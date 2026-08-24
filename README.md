@@ -1,9 +1,12 @@
 # thor-voice-serving
 
 ASR streaming (Zipformer RNN-T) trên Jetson AGX Thor, dùng Triton Inference
-Server. Base image, cách cài torch/onnxruntime-gpu, và fix `LD_LIBRARY_PATH`
-lấy từ `voice-agent-deployment/asr-triton` — stack đã chạy sản xuất trên chính
-con Thor này, không phải suy đoán.
+Server. `docker/Dockerfile.thor` build thẳng trên `asr-triton:latest` —
+image của đồng nghiệp (`voice-agent-deployment/asr-triton`), đã có sẵn
+torch/torchaudio/onnxruntime-gpu/libsndfile1 và fix `LD_LIBRARY_PATH`, chạy
+sản xuất 12+ ngày trên chính con Thor này. Không tự apt-get/pip gì thêm —
+mọi lần thử tự cài đều bị proxy nội bộ công ty chặn ở `ports.ubuntu.com` và
+`developer.download.nvidia.com`; đi qua image đã build sẵn là né hẳn.
 
 Đây là v1: **chỉ ASR + Prometheus + Grafana**. TTS chưa nằm trong repo này.
 
@@ -53,7 +56,7 @@ Rồi mở `http://localhost:3300` (Grafana) và `http://localhost:9900/targets`
 
 | | |
 |---|---|
-| `docker/Dockerfile.thor` | base `tritonserver:r38.4.arm64-sbsa-cu130-24.04` (đã có sẵn trên Thor) + torch/torchaudio/onnxruntime-gpu từ `pypi.jetson-ai-lab.io/sbsa/cu130` |
+| `docker/Dockerfile.thor` | base `asr-triton:latest` (image của đồng nghiệp, đã có sẵn trên Thor) - không cài thêm gì, chỉ kiểm CUDAExecutionProvider có mặt |
 | `model_repository/asr_streaming/` | copy nguyên từ `triton-voice-serving` — `model.py`, `streaming_search.py`, `config.pbtxt` không đổi dòng nào |
 | `scripts/thor/deploy_asr.sh` | build + run, cổng 9000 (http) / 9001 (gRPC) / 9002 (metrics), có port-guard |
 | `scripts/thor/deploy_monitoring.sh` | Prometheus + Grafana, bind `127.0.0.1` |
@@ -61,6 +64,13 @@ Rồi mở `http://localhost:3300` (Grafana) và `http://localhost:9900/targets`
 
 ## Việc còn lại (chưa làm ở v1 này)
 
+- **Rủi ro coupling với `asr-triton:latest`** — image base do team khác kiểm
+  soát, không phải của repo này. Họ rebuild/xoá thì lần build sau của mình ra
+  khác đi mà không có cảnh báo gì. Khi có thời gian: tự dựng một base image
+  riêng (từ `tritonserver:r38.4.arm64-sbsa-cu130-24.04` + torch/onnxruntime-gpu
+  qua `pypi.jetson-ai-lab.io/sbsa/cu130`) và xin whitelist proxy cho
+  `ports.ubuntu.com`/`developer.download.nvidia.com` để không phụ thuộc image
+  của người khác nữa.
 - TTS (ZipVoice) — chưa kiểm `piper_phonemize` có wheel aarch64 hay không
 - Chuyển ASR sang TensorRT — không bắt buộc, ONNX Runtime CUDA EP đã chạy được;
   đáng làm sau khi có số RTF/latency thật để so sánh
