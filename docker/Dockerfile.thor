@@ -10,7 +10,7 @@ FROM ${BASE_IMAGE}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libsndfile1 \
-    && rm -rf /var/lib/apt/lists/*
+        && rm -rf /var/lib/apt/lists/*
 
 # Không dùng PyPI thường: wheel torch/onnxruntime-gpu ở đó không có bản aarch64
 # CUDA 13. Index này là nơi duy nhất đã kiểm chứng có cả hai trên chính Thor.
@@ -31,7 +31,7 @@ ENV LD_LIBRARY_PATH=/opt/python/cpython-3.12-linux-aarch64-gnu/lib:${LD_LIBRARY_
 # thiếu nó ORT âm thầm rơi về CPU, ASR vẫn chạy nhưng chậm gấp nhiều lần, không
 # ai biết cho đến khi đo latency.
 RUN python3 -c "\
-import numpy, torch, torchaudio, onnxruntime, sentencepiece; \
-providers = onnxruntime.get_available_providers(); \
-assert 'CUDAExecutionProvider' in providers, f'CUDA EP thiếu: {providers}'; \
-print('deps ok, providers =', providers)"
+        import numpy, torch, torchaudio, onnxruntime, sentencepiece; \
+        providers = onnxruntime.get_available_providers(); \
+        assert 'CUDAExecutionProvider' in providers, f'CUDA EP thiếu: {providers}'; \
+        print('deps ok, providers =', providers)"

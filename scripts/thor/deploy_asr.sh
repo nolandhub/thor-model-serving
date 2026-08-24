@@ -10,6 +10,14 @@ GRPC_PORT="${ASR_GRPC_PORT:-9001}"
 METRICS_PORT="${ASR_METRICS_PORT:-9002}"
 NAME="${ASR_CONTAINER_NAME:-thor-asr-triton}"
 
+# Xoá container cũ CỦA CHÍNH MÌNH trước khi kiểm cổng - không thì lần chạy thứ
+# hai luôn tự báo "cổng bị chiếm" vì thấy đúng container mình vừa tạo lần trước,
+# rồi thoát trước khi kịp xoá nó. Kiểm cổng phải diễn ra SAU bước dọn này.
+if docker ps -a --format '{{.Names}}' | grep -qx "$NAME"; then
+  echo "xoá container cũ tên $NAME..."
+  docker rm -f "$NAME" >/dev/null
+fi
+
 for p in "$HTTP_PORT" "$GRPC_PORT" "$METRICS_PORT"; do
   if ss -ltn "sport = :$p" 2>/dev/null | grep -q LISTEN; then
     echo "dừng: cổng $p đang bị chiếm (chạy 'ss -ltnp sport = :$p' để xem ai)." >&2
@@ -28,11 +36,6 @@ done
 
 echo "build image..."
 docker build -t thor-voice-serving-asr -f "$ROOT/docker/Dockerfile.thor" "$ROOT/docker"
-
-if docker ps -a --format '{{.Names}}' | grep -qx "$NAME"; then
-  echo "xoá container cũ tên $NAME..."
-  docker rm -f "$NAME" >/dev/null
-fi
 
 echo "chạy tritonserver (http=$HTTP_PORT grpc=$GRPC_PORT metrics=$METRICS_PORT)..."
 docker run -d --gpus all \
