@@ -34,8 +34,17 @@ for f in encoder.onnx decoder.onnx joiner.onnx bpe.model; do
   fi
 done
 
+# Docker build KHÔNG tự thừa hưởng biến proxy của host - apt-get bên trong
+# container đi thẳng ra mạng, đụng gateway công ty và bị chặn (401 hoặc lỗi
+# cert). Forward lại nếu host có khai - đây là các build-arg Docker đã hiểu
+# sẵn, không cần khai ARG trong Dockerfile.
+PROXY_ARGS=()
+for v in http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY; do
+  [ -n "${!v:-}" ] && PROXY_ARGS+=(--build-arg "$v=${!v}")
+done
+
 echo "build image..."
-docker build -t thor-voice-serving-asr -f "$ROOT/docker/Dockerfile.thor" "$ROOT/docker"
+docker build "${PROXY_ARGS[@]}" -t thor-voice-serving-asr -f "$ROOT/docker/Dockerfile.thor" "$ROOT/docker"
 
 echo "chạy tritonserver (http=$HTTP_PORT grpc=$GRPC_PORT metrics=$METRICS_PORT)..."
 docker run -d --gpus all \
