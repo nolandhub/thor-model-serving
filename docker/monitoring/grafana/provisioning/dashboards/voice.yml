@@ -1,0 +1,15 @@
+# ABOUTME: Nạp mọi dashboard JSON trong /var/lib/grafana/dashboards lúc khởi động
+# ABOUTME: allowUiUpdates false - dashboard sinh từ build_dashboard.py, sửa tay sẽ bị ghi đè
+
+apiVersion: 1
+
+providers:
+  - name: voice
+    orgId: 1
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

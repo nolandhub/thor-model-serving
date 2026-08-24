@@ -1,0 +1,12 @@
+# ABOUTME: Datasource Prometheus, uid cố định để dashboard JSON trỏ thẳng vào
+# ABOUTME: localhost:9090 vì Grafana chạy network_mode host
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://localhost:9090
+    isDefault: true

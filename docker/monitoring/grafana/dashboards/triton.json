@@ -1,0 +1,787 @@
+{
+  "uid": "triton",
+  "title": "Triton",
+  "tags": [
+    "triton",
+    "server"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "HEALTH",
+      "id": 1,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Target UP",
+      "id": 2,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "up{job=\"triton\"}",
+          "refId": "A",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Error rate",
+      "id": 3,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(nv_inference_request_failure[1m])) by (model) / clamp_min(sum(rate(nv_inference_request_success[1m])) by (model) + sum(rate(nv_inference_request_failure[1m])) by (model), 1e-9)",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Model load",
+      "id": 4,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_model_load_duration_secs",
+          "refId": "A",
+          "legendFormat": "{{model}}"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background"
+      }
+    },
+    {
+      "type": "row",
+      "title": "LATENCY",
+      "id": 5,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Request p50/p95/p99",
+      "id": 6,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_request_summary_us{quantile=\"0.5\"} / 1000",
+          "refId": "A",
+          "legendFormat": "{{model}} p0.5"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_request_summary_us{quantile=\"0.95\"} / 1000",
+          "refId": "B",
+          "legendFormat": "{{model}} p0.95"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_request_summary_us{quantile=\"0.99\"} / 1000",
+          "refId": "C",
+          "legendFormat": "{{model}} p0.99"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue p50/p95/p99",
+      "id": 7,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_queue_summary_us{quantile=\"0.5\"} / 1000",
+          "refId": "A",
+          "legendFormat": "{{model}} p0.5"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_queue_summary_us{quantile=\"0.95\"} / 1000",
+          "refId": "B",
+          "legendFormat": "{{model}} p0.95"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_queue_summary_us{quantile=\"0.99\"} / 1000",
+          "refId": "C",
+          "legendFormat": "{{model}} p0.99"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue time trung bình",
+      "id": 8,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(nv_inference_queue_summary_us_sum[1m]) / clamp_min(rate(nv_inference_queue_summary_us_count[1m]), 1e-9) / 1000",
+          "refId": "A",
+          "legendFormat": "queue"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue depth",
+      "id": 9,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_pending_request_count",
+          "refId": "A",
+          "legendFormat": "{{model}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "asr_streaming · Latency breakdown",
+      "id": 10,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "fillOpacity": 60
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(nv_inference_queue_summary_us_sum{model=\"asr_streaming\"}[1m]) / clamp_min(rate(nv_inference_queue_summary_us_count{model=\"asr_streaming\"}[1m]), 1e-9) / 1000",
+          "refId": "A",
+          "legendFormat": "queue"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(nv_inference_compute_input_summary_us_sum{model=\"asr_streaming\"}[1m]) / clamp_min(rate(nv_inference_compute_input_summary_us_count{model=\"asr_streaming\"}[1m]), 1e-9) / 1000",
+          "refId": "B",
+          "legendFormat": "compute_input"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(nv_inference_compute_infer_summary_us_sum{model=\"asr_streaming\"}[1m]) / clamp_min(rate(nv_inference_compute_infer_summary_us_count{model=\"asr_streaming\"}[1m]), 1e-9) / 1000",
+          "refId": "C",
+          "legendFormat": "compute_infer"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(nv_inference_compute_output_summary_us_sum{model=\"asr_streaming\"}[1m]) / clamp_min(rate(nv_inference_compute_output_summary_us_count{model=\"asr_streaming\"}[1m]), 1e-9) / 1000",
+          "refId": "D",
+          "legendFormat": "compute_output"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "tts · Latency breakdown",
+      "id": 11,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "fillOpacity": 60
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(nv_inference_queue_summary_us_sum{model=\"tts\"}[1m]) / clamp_min(rate(nv_inference_queue_summary_us_count{model=\"tts\"}[1m]), 1e-9) / 1000",
+          "refId": "A",
+          "legendFormat": "queue"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(nv_inference_compute_input_summary_us_sum{model=\"tts\"}[1m]) / clamp_min(rate(nv_inference_compute_input_summary_us_count{model=\"tts\"}[1m]), 1e-9) / 1000",
+          "refId": "B",
+          "legendFormat": "compute_input"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(nv_inference_compute_infer_summary_us_sum{model=\"tts\"}[1m]) / clamp_min(rate(nv_inference_compute_infer_summary_us_count{model=\"tts\"}[1m]), 1e-9) / 1000",
+          "refId": "C",
+          "legendFormat": "compute_infer"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(nv_inference_compute_output_summary_us_sum{model=\"tts\"}[1m]) / clamp_min(rate(nv_inference_compute_output_summary_us_count{model=\"tts\"}[1m]), 1e-9) / 1000",
+          "refId": "D",
+          "legendFormat": "compute_output"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "THROUGHPUT",
+      "id": 12,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "RPS theo model",
+      "id": 13,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(nv_inference_request_success[1m])) by (model)",
+          "refId": "A",
+          "legendFormat": "{{model}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Inference vs execution",
+      "id": 14,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(nv_inference_count[1m])) by (model)",
+          "refId": "A",
+          "legendFormat": "inference {{model}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(nv_inference_exec_count[1m])) by (model)",
+          "refId": "B",
+          "legendFormat": "execution {{model}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Batch size trung bình",
+      "id": 15,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 23
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(nv_inference_count[1m])) by (model) / clamp_min(sum(rate(nv_inference_exec_count[1m])) by (model), 1e-9)",
+          "refId": "A",
+          "legendFormat": "{{model}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "RESOURCE",
+      "id": 16,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU utilization",
+      "id": 17,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_gpu_utilization * 100",
+          "refId": "A",
+          "legendFormat": "GPU {{gpu_uuid}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU memory",
+      "id": 18,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_gpu_memory_used_bytes / nv_gpu_memory_total_bytes * 100",
+          "refId": "A",
+          "legendFormat": "GPU {{gpu_uuid}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU power",
+      "id": 19,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_gpu_power_usage",
+          "refId": "A",
+          "legendFormat": "usage"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU utilization",
+      "id": 20,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_cpu_utilization * 100",
+          "refId": "A",
+          "legendFormat": "CPU"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU memory",
+      "id": 21,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_cpu_memory_used_bytes / nv_cpu_memory_total_bytes * 100",
+          "refId": "A",
+          "legendFormat": "RAM"
+        }
+      ]
+    }
+  ]
+}

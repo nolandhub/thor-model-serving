@@ -1,0 +1,1042 @@
+{
+  "uid": "voice-serving",
+  "title": "Voice Serving",
+  "tags": [
+    "triton",
+    "vllm",
+    "voice"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "OVERVIEW",
+      "id": 1,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "RPS tổng",
+      "id": 2,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(nv_inference_request_success[1m])) + sum(rate(vllm:request_success_total[1m]))",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Success rate (Triton)",
+      "id": 3,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(nv_inference_request_success[1m])) / clamp_min(sum(rate(nv_inference_request_success[1m])) + sum(rate(nv_inference_request_failure[1m])), 1e-9)",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error rate (Triton)",
+      "id": 4,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(nv_inference_request_failure[1m])) / clamp_min(sum(rate(nv_inference_request_success[1m])) + sum(rate(nv_inference_request_failure[1m])), 1e-9)",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "CCU tổng",
+      "id": 5,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(voice_ccu * on(model, model_instance) (time() - voice_ccu_updated_at < bool 60)) + sum(vllm:num_requests_running)",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "ASR_STREAMING",
+      "id": 6,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "asr_streaming · RPS",
+      "id": 7,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(nv_inference_request_success{model=\"asr_streaming\"}[1m])",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "asr_streaming · Latency p50/p95/p99",
+      "id": 8,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_request_summary_us{model=\"asr_streaming\",quantile=\"0.5\"} / 1000",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_request_summary_us{model=\"asr_streaming\",quantile=\"0.95\"} / 1000",
+          "refId": "B",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_request_summary_us{model=\"asr_streaming\",quantile=\"0.99\"} / 1000",
+          "refId": "C",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "asr_streaming · CCU",
+      "id": 9,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 18
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(voice_ccu{model=\"asr_streaming\"} * on(model, model_instance) (time() - voice_ccu_updated_at < bool 60))",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "asr_streaming · Queue depth",
+      "id": 10,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 26
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_pending_request_count{model=\"asr_streaming\"}",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "asr_streaming · RTF p50/p95/p99",
+      "id": 11,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 26
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by(le) (rate(voice_rtf_bucket{model=\"asr_streaming\"}[5m])))",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(voice_rtf_bucket{model=\"asr_streaming\"}[5m])))",
+          "refId": "B",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by(le) (rate(voice_rtf_bucket{model=\"asr_streaming\"}[5m])))",
+          "refId": "C",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "asr_streaming · Error rate",
+      "id": 12,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 26
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(nv_inference_request_failure{model=\"asr_streaming\"}[1m])) / clamp_min(sum(rate(nv_inference_request_success{model=\"asr_streaming\"}[1m])) + sum(rate(nv_inference_request_failure{model=\"asr_streaming\"}[1m])), 1e-9)",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "TTS",
+      "id": 13,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "tts · RPS",
+      "id": 14,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 35
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(nv_inference_request_success{model=\"tts\"}[1m])",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "tts · Latency p50/p95/p99",
+      "id": 15,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 35
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_request_summary_us{model=\"tts\",quantile=\"0.5\"} / 1000",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_request_summary_us{model=\"tts\",quantile=\"0.95\"} / 1000",
+          "refId": "B",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_request_summary_us{model=\"tts\",quantile=\"0.99\"} / 1000",
+          "refId": "C",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "tts · CCU",
+      "id": 16,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 35
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(voice_ccu{model=\"tts\"} * on(model, model_instance) (time() - voice_ccu_updated_at < bool 60))",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "tts · Queue depth",
+      "id": 17,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_inference_pending_request_count{model=\"tts\"}",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "tts · RTF p50/p95/p99",
+      "id": 18,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by(le) (rate(voice_rtf_bucket{model=\"tts\"}[5m])))",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(voice_rtf_bucket{model=\"tts\"}[5m])))",
+          "refId": "B",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by(le) (rate(voice_rtf_bucket{model=\"tts\"}[5m])))",
+          "refId": "C",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "tts · Error rate",
+      "id": 19,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(nv_inference_request_failure{model=\"tts\"}[1m])) / clamp_min(sum(rate(nv_inference_request_success{model=\"tts\"}[1m])) + sum(rate(nv_inference_request_failure{model=\"tts\"}[1m])), 1e-9)",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "LLM (vLLM)",
+      "id": 20,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 51
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "llm · RPS",
+      "id": 21,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 52
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(vllm:request_success_total[1m]))",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "llm · Latency p50/p95/p99",
+      "id": 22,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 52
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by(le) (rate(vllm:e2e_request_latency_seconds_bucket[5m])))",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(vllm:e2e_request_latency_seconds_bucket[5m])))",
+          "refId": "B",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by(le) (rate(vllm:e2e_request_latency_seconds_bucket[5m])))",
+          "refId": "C",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "llm · CCU",
+      "id": 23,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 52
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "vllm:num_requests_running",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "llm · Queue depth",
+      "id": 24,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 60
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "vllm:num_requests_waiting",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "llm · TTFT p50/p95/p99",
+      "id": 25,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 60
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by(le) (rate(vllm:time_to_first_token_seconds_bucket[5m])))",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(vllm:time_to_first_token_seconds_bucket[5m])))",
+          "refId": "B",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by(le) (rate(vllm:time_to_first_token_seconds_bucket[5m])))",
+          "refId": "C",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "llm · TPOT p50/p95/p99",
+      "id": 26,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 60
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by(le) (rate(vllm:inter_token_latency_seconds_bucket[5m])))",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by(le) (rate(vllm:inter_token_latency_seconds_bucket[5m])))",
+          "refId": "B",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by(le) (rate(vllm:inter_token_latency_seconds_bucket[5m])))",
+          "refId": "C",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "llm · Error rate (proxy: abort)",
+      "id": 27,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 68
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(vllm:request_success_total{finished_reason=\"abort\"}[1m])) / clamp_min(sum(rate(vllm:request_success_total[1m])), 1e-9)",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "GPU (chung cả máy)",
+      "id": 28,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 76
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU Utilization",
+      "id": 29,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 77
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_gpu_utilization * 100",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU Memory usage",
+      "id": 30,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 77
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_gpu_memory_used_bytes / nv_gpu_memory_total_bytes * 100",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU Memory used",
+      "id": 31,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 77
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "nv_gpu_memory_used_bytes",
+          "refId": "A",
+          "legendFormat": "{{model}}{{instance}}{{quantile}}"
+        }
+      ]
+    }
+  ]
+}

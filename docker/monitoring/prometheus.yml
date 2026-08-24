@@ -1,0 +1,11 @@
+# ABOUTME: Scrape config cho Thor - chỉ ASR Triton ở :9002 (TTS/LLM chưa deploy, thêm job sau khi có)
+# ABOUTME: Prometheus/Grafana chạy network_mode host nên localhost ở đây là host thật
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: triton
+    static_configs:
+      - targets: ["localhost:9002"]

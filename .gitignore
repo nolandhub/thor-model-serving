@@ -1,0 +1,9 @@
+# Trọng số model - tải bằng scripts/fetch_models.sh, không commit
+*.onnx
+*.bin
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
