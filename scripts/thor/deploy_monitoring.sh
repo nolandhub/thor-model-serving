@@ -5,11 +5,18 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 COMPOSE="$ROOT/docker/monitoring/docker-compose.yml"
+MON="$ROOT/docker/monitoring"
 
 if [ "${1:-up}" = "down" ]; then
   docker compose -f "$COMPOSE" down
   exit 0
 fi
+
+# Cùng biến ASR_METRICS_PORT mà deploy_asr.sh đọc - đổi cổng ASR chỉ cần đổi
+# một chỗ, không phải nhớ sửa thêm prometheus.yml rồi ăn một dashboard trống
+# trơn không báo lỗi gì vì scrape sai cổng.
+sed "s/__ASR_METRICS_PORT__/${ASR_METRICS_PORT:-9002}/" \
+  "$MON/prometheus.yml.template" > "$MON/prometheus.yml"
 
 for port in 9090 3000; do
   if ss -ltn "sport = :$port" 2>/dev/null | grep -q LISTEN; then

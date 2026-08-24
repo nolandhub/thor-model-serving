@@ -2,6 +2,9 @@
 *.onnx
 *.bin
 
+# Render từ prometheus.yml.template bởi deploy_monitoring.sh - không phải nguồn
+docker/monitoring/prometheus.yml
+
 # Python
 __pycache__/
 *.py[cod]
