@@ -54,7 +54,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(nv_inference_request_success[1m])) + sum(rate(vllm:request_success_total[1m]))",
+          "expr": "(sum(rate(nv_inference_request_success[1m])) or vector(0)) + (sum(rate(vllm:request_success_total[1m])) or vector(0))",
           "refId": "A",
           "legendFormat": "{{model}}{{instance}}{{quantile}}"
         }
@@ -150,7 +150,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(voice_ccu * on(model, model_instance) (time() - voice_ccu_updated_at < bool 60)) + sum(vllm:num_requests_running)",
+          "expr": "(sum(voice_ccu * on(model, model_instance) (time() - voice_ccu_updated_at < bool 60)) or vector(0)) + (sum(vllm:num_requests_running) or vector(0))",
           "refId": "A",
           "legendFormat": "{{model}}{{instance}}{{quantile}}"
         }

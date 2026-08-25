@@ -156,3 +156,19 @@ def test_python_inline_trong_dockerfile_hop_le():
     m = re.search(r'RUN python3 -c "(.*?)"\n', text, re.S)
     assert m, "không tìm thấy RUN python3 -c trong Dockerfile.thor"
     compile(m.group(1).replace("\\\n", ""), "<dockerfile>", "exec")
+
+
+def test_panel_tong_khong_bi_rong_khi_thieu_vllm():
+    """`A + B` trong PromQL cho vector RỖNG nếu một vế rỗng, không phải A + 0.
+
+    Repo này chỉ có ASR, không có vLLM - panel tổng nào cộng thẳng số liệu
+    vLLM sẽ No data vĩnh viễn kể cả khi ASR đang chạy. Phải bọc `or vector(0)`.
+    """
+    dash = json.loads((DASH_DIR / "voice-serving.json").read_text())
+    loi = []
+    for panel in dash.get("panels", []):
+        for target in panel.get("targets", []):
+            expr = target.get("expr", "")
+            if "+" in expr and "vllm" in expr and "or vector(0)" not in expr:
+                loi.append(f"{panel.get('title')}: {expr}")
+    assert not loi, "panel cộng số liệu vLLM mà không bọc or vector(0):\n" + "\n".join(loi)

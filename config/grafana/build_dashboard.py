@@ -19,6 +19,16 @@ DASH_DIR = Path(__file__).parent / "dashboards"
 # Join theo model_instance chứ không phải instance: label "instance" bị
 # Prometheus chiếm riêng cho địa chỉ target lúc scrape, nên serving/metrics.py
 # phát label tự phát dưới tên "model_instance" để không đụng.
+def opt(expr: str) -> str:
+    """Bọc một vế cộng để nó thành 0 thay vì làm rỗng cả biểu thức.
+
+    PromQL: `A + B` khớp theo label, một vế rỗng thì kết quả RỖNG chứ không
+    phải A. Repo này chỉ triển khai ASR - mọi panel tổng cộng thêm vLLM/TTS
+    sẽ No data vĩnh viễn nếu không bọc.
+    """
+    return f"({expr} or vector(0))"
+
+
 def ccu(selector: str) -> str:
     return (
         f"sum(voice_ccu{selector} * on(model, model_instance) "
@@ -63,8 +73,8 @@ ROWS = [
             (
                 "RPS tổng",
                 [
-                    "sum(rate(nv_inference_request_success[1m]))"
-                    " + sum(rate(vllm:request_success_total[1m]))"
+                    f"{opt('sum(rate(nv_inference_request_success[1m]))')}"
+                    f" + {opt('sum(rate(vllm:request_success_total[1m]))')}"
                 ],
                 "reqps",
             ),
@@ -86,7 +96,11 @@ ROWS = [
                 ],
                 "percentunit",
             ),
-            ("CCU tổng", [f"{ccu('')} + sum(vllm:num_requests_running)"], "short"),
+            (
+                "CCU tổng",
+                [f"{opt(ccu(''))} + {opt('sum(vllm:num_requests_running)')}"],
+                "short",
+            ),
         ],
     ),
     ("ASR_STREAMING", triton_rows("asr_streaming")),
