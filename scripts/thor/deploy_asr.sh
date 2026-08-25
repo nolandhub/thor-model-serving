@@ -5,9 +5,9 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
-HTTP_PORT="${ASR_HTTP_PORT:-9000}"
-GRPC_PORT="${ASR_GRPC_PORT:-9001}"
-METRICS_PORT="${ASR_METRICS_PORT:-9002}"
+HTTP_PORT="${ASR_HTTP_PORT:-1000}"
+GRPC_PORT="${ASR_GRPC_PORT:-1001}"
+METRICS_PORT="${ASR_METRICS_PORT:-1002}"
 NAME="${ASR_CONTAINER_NAME:-thor-asr-triton}"
 
 # Xoá container cũ CỦA CHÍNH MÌNH trước khi kiểm cổng - không thì lần chạy thứ
@@ -17,6 +17,7 @@ if docker ps -a --format '{{.Names}}' | grep -qx "$NAME"; then
   echo "xoá container cũ tên $NAME..."
   docker rm -f "$NAME" >/dev/null
 fi
+
 
 for p in "$HTTP_PORT" "$GRPC_PORT" "$METRICS_PORT"; do
   if ss -ltn "sport = :$p" 2>/dev/null | grep -q LISTEN; then

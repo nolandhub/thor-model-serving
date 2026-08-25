@@ -156,7 +156,7 @@ Yêu cầu từng service:
 - `image: thor-voice-serving-asr:${IMAGE_TAG}`
 - `container_name: thor-asr-triton`
 - GPU: `gpus: all`
-- volumes: `../model_repository:/models`, `../serving:/opt/serving/serving:ro`
+- volumes: `./model_repository:/models`, `./serving:/opt/serving/serving:ro` (đường dẫn volume tính từ vị trí compose.yaml ở root, không phải từ build context)
 - command: `tritonserver` với `--model-repository=/models` và hai
   `--metrics-config` như hiện tại (giữ nguyên, không đổi)
 - ports: `127.0.0.1:${ASR_HTTP_PORT}:8000`, `127.0.0.1:${ASR_GRPC_PORT}:8001`

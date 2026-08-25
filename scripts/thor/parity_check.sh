@@ -4,7 +4,7 @@
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-GRPC_PORT="${ASR_GRPC_PORT:-9001}"
+GRPC_PORT="${ASR_GRPC_PORT:-1001}"
 
 EXPECTED="ANH CÓ THÍCH TÔI GIỮ TRƯỚC QUYỂN SÁCH NÀY CHO ANH KHÔNG"
 
