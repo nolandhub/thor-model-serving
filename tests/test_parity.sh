@@ -12,22 +12,22 @@ ADDR="${BIND_ADDR:-127.0.0.1}"
 
 EXPECTED="ANH CÓ THÍCH TÔI GIỮ TRƯỚC QUYỂN SÁCH NÀY CHO ANH KHÔNG"
 
-echo "gửi tests/assets/sample_vi.wav qua $ADDR:$GRPC_PORT..."
+echo "streaming tests/assets/sample_vi.wav to $ADDR:$GRPC_PORT ..."
 # Dòng cuối client in là \r\x1b[K{transcript} - xoá mã ANSI trước khi so, không
 # chỉ \r, nếu không GOT sẽ mang cả \x1b[K lẫn vào và không bao giờ khớp EXPECTED.
 GOT="$(python3 "$ROOT/client/asr_streaming_client.py" \
   --url "$ADDR:$GRPC_PORT" --fast \
   "$ROOT/tests/assets/sample_vi.wav" 2>&1 | tail -1 | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\r//g')"
 
-echo "kỳ vọng (golden, dump từ ORT trên máy dev):"
+echo "expected (golden, dumped from ORT on a dev machine):"
 echo "  $EXPECTED"
-echo "nhận được (Thor):"
+echo "actual   (Thor):"
 echo "  $GOT"
 
 if [ "$GOT" = "$EXPECTED" ]; then
-  echo "KHỚP"
+  echo "PASS - transcript matches golden"
   exit 0
 else
-  echo "LỆCH - xem ./scripts/serving.sh logs asr, kiểm CHUNK_VARIANT và version model" >&2
+  echo "FAIL - transcript differs. Check: ./scripts/serving.sh logs asr, CHUNK_VARIANT, model version" >&2
   exit 1
 fi

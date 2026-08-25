@@ -134,3 +134,14 @@ def test_serving_sh_lenh_la_bao_loi_ro_rang():
     r = _run_sh("khong-ton-tai")
     assert r.returncode != 0
     assert "khong-ton-tai" in r.stderr
+
+
+def test_log_runtime_bang_tieng_anh_ascii():
+    """Log lúc deploy phải là tiếng Anh - dán đi hỏi ai cũng đọc được.
+
+    Comment trong script vẫn tiếng Việt, chỉ output ra người vận hành mới bị
+    ràng buộc. Kiểm bằng ASCII vì tiếng Việt luôn có dấu.
+    """
+    for r in (_run_sh("help"), _run_sh("khong-ton-tai")):
+        out = r.stdout + r.stderr
+        assert out.isascii(), f"log có ký tự ngoài ASCII: {[c for c in out if not c.isascii()]}"
