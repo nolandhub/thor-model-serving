@@ -12,12 +12,33 @@ ADDR="${BIND_ADDR:-127.0.0.1}"
 
 EXPECTED="ANH CÓ THÍCH TÔI GIỮ TRƯỚC QUYỂN SÁCH NÀY CHO ANH KHÔNG"
 
+python3 -c 'import tritonclient.grpc' 2>/dev/null || {
+  echo "error: tritonclient missing. Install it first:" >&2
+  echo "  pip install --user \"tritonclient[grpc]\" numpy soundfile scipy" >&2
+  exit 1
+}
+
 echo "streaming tests/assets/sample_vi.wav to $ADDR:$GRPC_PORT ..."
+
+# Chạy tách khỏi pipeline. Gộp `python3 ... 2>&1 | tail -1` vào một lệnh gán là
+# tự bịt miệng mình: pipefail cho pipeline trả mã lỗi, set -e giết script ngay
+# tại dòng gán, mà stderr thì đã bị nuốt vào pipe nên không in ra gì hết.
+set +e
+RAW="$(python3 "$ROOT/client/asr_streaming_client.py" \
+  --url "$ADDR:$GRPC_PORT" --fast \
+  "$ROOT/tests/assets/sample_vi.wav" 2>&1)"
+RC=$?
+set -e
+
+if [ "$RC" -ne 0 ]; then
+  echo "error: client exited $RC" >&2
+  printf '%s\n' "$RAW" >&2
+  exit 1
+fi
+
 # Dòng cuối client in là \r\x1b[K{transcript} - xoá mã ANSI trước khi so, không
 # chỉ \r, nếu không GOT sẽ mang cả \x1b[K lẫn vào và không bao giờ khớp EXPECTED.
-GOT="$(python3 "$ROOT/client/asr_streaming_client.py" \
-  --url "$ADDR:$GRPC_PORT" --fast \
-  "$ROOT/tests/assets/sample_vi.wav" 2>&1 | tail -1 | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\r//g')"
+GOT="$(printf '%s\n' "$RAW" | tail -1 | sed -E 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\r//g')"
 
 echo "expected (golden, dumped from ORT on a dev machine):"
 echo "  $EXPECTED"
