@@ -87,7 +87,9 @@ vào — ví dụ với `node-exporter`:
 ```bash
 # máy dev (nhớ --platform, Thor là arm64)
 docker pull --platform linux/arm64 prom/node-exporter:latest
-docker save prom/node-exporter:latest -o /tmp/node-exporter-arm64.tar
+# --platform ở CẢ save nữa: mặc định save tìm manifest khớp host (amd64) và
+# báo "content digest ... not found" vì chỉ có lớp arm64 được kéo về.
+docker save --platform linux/arm64 prom/node-exporter:latest -o /tmp/node-exporter-arm64.tar
 rsync -avP /tmp/node-exporter-arm64.tar <user>@thor:/tmp/
 
 # Thor
