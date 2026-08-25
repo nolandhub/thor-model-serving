@@ -184,6 +184,7 @@ Tag theo git sha là đường rollback duy nhất khi không có registry giữ
 | `serving/metrics.py` | contract metric dùng chung — model.py và build_dashboard.py cùng import |
 | `model_repository/asr_streaming/` | copy nguyên từ `triton-voice-serving`, không đổi dòng nào |
 | `tests/` | parity, bất biến cấu hình, và `dump_golden_asr.py` sinh fixture |
+| `docs/ARCHITECTURE.md` | tổng quan hệ thống và vì sao mọi thứ xếp như vậy |
 | `docs/superpowers/specs/` | thiết kế của lần refactor này |
 
 ## Việc còn lại
