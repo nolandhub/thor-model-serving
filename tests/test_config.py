@@ -103,3 +103,34 @@ def test_metrics_8002_khong_publish_ra_host():
     assert ":8002" not in re.sub(r"#.*", "", text), (
         "cổng metrics 8002 không được publish ra host - chỉ prometheus trong network gọi"
     )
+
+
+# --- serving.sh phải chạy được ở các nhánh không cần docker ------------------
+# `set -u` + `${1:-help}` trong case là cái bẫy kinh điển: case khớp nhánh
+# help nhưng dòng gán ngay sau đó vẫn đọc $1 đang unset.
+
+SERVING_SH = ROOT / "scripts" / "serving.sh"
+
+
+def _run_sh(*args):
+    return subprocess.run(
+        ["bash", str(SERVING_SH), *args],
+        capture_output=True, text=True, cwd=ROOT,
+    )
+
+
+def test_serving_sh_khong_tham_so_in_help():
+    r = _run_sh()
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+    assert "build" in r.stdout and "health" in r.stdout
+
+
+def test_serving_sh_help():
+    r = _run_sh("help")
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+
+
+def test_serving_sh_lenh_la_bao_loi_ro_rang():
+    r = _run_sh("khong-ton-tai")
+    assert r.returncode != 0
+    assert "khong-ton-tai" in r.stderr

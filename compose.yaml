@@ -23,7 +23,15 @@ services:
         no_proxy: ${no_proxy:-}
     image: thor-voice-serving-asr:${IMAGE_TAG}
     container_name: thor-asr-triton
-    gpus: all
+    # Dạng deploy.resources thay cho `gpus: all` (key mới, cần Compose v2.30+).
+    # Thor có thể chạy bản cũ hơn, dạng này được hỗ trợ từ lâu hơn nhiều.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     volumes:
       - ./model_repository:/models
       - ./serving:/opt/serving/serving:ro
@@ -42,7 +50,17 @@ services:
       - "${BIND_ADDR}:${ASR_HTTP_PORT}:8000"
       - "${BIND_ADDR}:${ASR_GRPC_PORT}:8001"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8000/v2/health/ready"]
+      # python3 chứ không curl: image base chắc chắn có python3 (Triton python
+      # backend chạy bằng nó), không chắc có curl. Healthcheck gọi binary không
+      # tồn tại thì `up --wait` treo tới hết retries rồi báo unhealthy.
+      test:
+        - CMD
+        - python3
+        - -c
+        - |
+          import urllib.request, sys
+          sys.exit(0 if urllib.request.urlopen(
+              "http://localhost:8000/v2/health/ready", timeout=3).status == 200 else 1)
       interval: 10s
       timeout: 3s
       retries: 12

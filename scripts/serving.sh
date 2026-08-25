@@ -55,16 +55,16 @@ cmd_logs() { compose --profile asr --profile monitoring logs -f "$@"; }
 # compose ps chỉ trả lời được vế đầu, nên health hỏi thẳng từng endpoint.
 probe() {  # probe <nhãn> <url>
   if curl -sf --max-time 5 "$2" >/dev/null 2>&1; then
-    printf '%-10s %-8s %s\n' "$1" "ok" "$2"
+    printf '%-12s %-6s %s\n' "$1" "ok" "$2"
   else
-    printf '%-10s %-8s %s\n' "$1" "KHÔNG" "$2"
+    printf '%-12s %-6s %s\n' "$1" "HỎNG" "$2"
     return 1
   fi
 }
 
 cmd_health() {
   local rc=0
-  probe ASR ready "http://$BIND_ADDR:$ASR_HTTP_PORT/v2/health/ready" || rc=1
+  probe ASR "http://$BIND_ADDR:$ASR_HTTP_PORT/v2/health/ready" || rc=1
   probe Prometheus "http://$BIND_ADDR:$PROM_PORT/-/healthy" || rc=1
   probe Grafana "http://$BIND_ADDR:$GRAFANA_PORT/api/health" || rc=1
 
@@ -73,9 +73,9 @@ cmd_health() {
   local targets
   if targets="$(curl -sf --max-time 5 "http://$BIND_ADDR:$PROM_PORT/api/v1/targets" 2>/dev/null)"; then
     if printf '%s' "$targets" | grep -q '"health":"up"'; then
-      printf '%-10s %-8s %s\n' "target" "UP" "asr:8002"
+      printf '%-12s %-6s %s\n' "prom→asr" "UP" "asr:8002"
     else
-      printf '%-10s %-8s %s\n' "target" "DOWN" "asr:8002 - xem $0 logs asr"
+      printf '%-12s %-6s %s\n' "prom→asr" "DOWN" "asr:8002 - xem ./scripts/serving.sh logs asr"
       rc=1
     fi
   fi
@@ -93,11 +93,14 @@ cmd_help() {
   health                kiểm từng endpoint + prometheus target có UP không
   help                  bản này
 
-Parity test tách riêng, cần Python: ./tests/test_parity.sh
+
 MSG
 }
 
-case "${1:-help}" in
-  build|up|down|logs|health|help) cmd="$1"; shift; "cmd_$cmd" "$@" ;;
-  *) echo "lệnh không rõ: $1" >&2; echo >&2; cmd_help >&2; exit 1 ;;
+cmd="${1:-help}"
+[ $# -gt 0 ] && shift
+
+case "$cmd" in
+  build|up|down|logs|health|help) "cmd_$cmd" "$@" ;;
+  *) echo "lệnh không rõ: $cmd" >&2; echo >&2; cmd_help >&2; exit 1 ;;
 esac
