@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from serving.metrics import CCU_TTL_S  # noqa: E402
 
 DS = {"type": "prometheus", "uid": "prometheus"}
-DASH_DIR = Path(__file__).parent / "grafana" / "dashboards"
+DASH_DIR = Path(__file__).parent / "dashboards"
 
 # Instance nào không được chạm trong CCU_TTL_S giây thì nhân 0. Mô phỏng đúng
 # cái _sweep() sẽ làm nếu nó được chạy - xem spec §6.

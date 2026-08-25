@@ -1,9 +1,9 @@
-# Trọng số model - tải bằng scripts/fetch_models.sh, không commit
+# Trọng số model - Thor không ra được internet, rsync từ máy dev sang (xem README)
 *.onnx
 *.bin
 
-# Render từ prometheus.yml.template bởi deploy_monitoring.sh - không phải nguồn
-docker/monitoring/prometheus.yml
+# Cấu hình cục bộ của từng máy - commit .env.example thay vì file này
+.env
 
 # Python
 __pycache__/

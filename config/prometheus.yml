@@ -1,0 +1,13 @@
+# ABOUTME: Scrape config - target là tên service trong compose network, không phải cổng host
+# ABOUTME: Nhờ vậy đổi cổng host không ảnh hưởng gì ở đây, hết cơ chế template hoá
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: triton
+    # asr:8002 - DNS nội bộ compose network. Cổng 8002 cố định vì mỗi container
+    # có namespace riêng, không va chạm với ai trên host.
+    static_configs:
+      - targets: ["asr:8002"]

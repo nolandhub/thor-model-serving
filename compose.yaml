@@ -1,0 +1,96 @@
+# ABOUTME: Toàn bộ stack - ASR Triton + Prometheus + Grafana trên một bridge network riêng
+# ABOUTME: Không chạy trực tiếp, dùng ./scripts/serving.sh (nó lo .env và profile)
+
+x-logging: &logging
+  # Container thường trú không xoay log là đầy đĩa Thor - mà Thor là máy dùng chung.
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
+services:
+  asr:
+    profiles: [asr]
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.thor
+      args:
+        BASE_IMAGE: ${ASR_BASE_IMAGE}
+        # Docker build KHÔNG tự thừa hưởng proxy của host - apt/pip trong
+        # container đi thẳng ra mạng, đụng gateway công ty và bị chặn.
+        http_proxy: ${http_proxy:-}
+        https_proxy: ${https_proxy:-}
+        no_proxy: ${no_proxy:-}
+    image: thor-voice-serving-asr:${IMAGE_TAG}
+    container_name: thor-asr-triton
+    gpus: all
+    volumes:
+      - ./model_repository:/models
+      - ./serving:/opt/serving/serving:ro
+    command:
+      - tritonserver
+      - --model-repository=/models
+      # Tường minh chứ không dựa vào mặc định: vô hiệu hoá API load/unload model.
+      # Cần thiết vì data plane có thể mở ra LAN, mà Triton không có auth.
+      - --model-control-mode=none
+      - --metrics-config
+      - summary_latencies=true
+      - --metrics-config
+      - summary_quantiles=0.5:0.05,0.95:0.01,0.99:0.001
+    ports:
+      # 8002 (metrics) CỐ Ý không publish - chỉ prometheus trong network gọi.
+      - "${BIND_ADDR}:${ASR_HTTP_PORT}:8000"
+      - "${BIND_ADDR}:${ASR_GRPC_PORT}:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v2/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+    logging: *logging
+
+  prometheus:
+    profiles: [monitoring]
+    # :latest chứ không ghim version: registry-1.docker.io bị chặn từ Thor,
+    # :latest là bản duy nhất đã nằm sẵn trong cache local. Ghim sẽ pull fail.
+    image: prom/prometheus:latest
+    container_name: thor-voice-prometheus
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      # KHÔNG đặt --web.listen-address=127.0.0.1: trong container phải nghe
+      # 0.0.0.0 thì port mapping mới tới được. Việc không phơi ra LAN do tiền
+      # tố ${BIND_ADDR} ở phía host đảm nhiệm.
+    ports:
+      - "${BIND_ADDR}:${PROM_PORT}:9090"
+    restart: unless-stopped
+    logging: *logging
+
+  grafana:
+    profiles: [monitoring]
+    # Cùng lý do :latest như prometheus.
+    image: grafana/grafana:latest
+    container_name: thor-voice-grafana
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    environment:
+      # Chỉ vào được qua SSH tunnel -> đúng một người mỗi lần. Nếu đổi
+      # ${BIND_ADDR} thành IP LAN thì PHẢI tắt anonymous admin trước.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    ports:
+      - "${BIND_ADDR}:${GRAFANA_PORT}:3000"
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  prometheus-data:
+  grafana-data:
