@@ -172,3 +172,47 @@ def test_panel_tong_khong_bi_rong_khi_thieu_vllm():
             if "+" in expr and "vllm" in expr and "or vector(0)" not in expr:
                 loi.append(f"{panel.get('title')}: {expr}")
     assert not loi, "panel cộng số liệu vLLM mà không bọc or vector(0):\n" + "\n".join(loi)
+
+
+# --- Tầng host: node_exporter ------------------------------------------------
+# Thor là máy dùng chung. Đĩa đầy hoặc throttle nhiệt là hai chế độ hỏng mà
+# metric tầng ứng dụng không nhìn thấy được.
+
+NODE_FULL = DASH_DIR / "node-exporter-full.json"
+
+
+def test_prometheus_scrape_node_exporter():
+    text = PROMETHEUS_YML.read_text()
+    assert "node-exporter:9100" in text
+
+
+def test_node_exporter_khong_publish_ra_host():
+    """9100 chỉ để prometheus trong network gọi, không mở ra ngoài."""
+    text = re.sub(r"#.*", "", COMPOSE.read_text())
+    assert "node-exporter" in text, "chưa có service node-exporter trong compose.yaml"
+    assert ":9100" not in text
+
+
+def test_node_exporter_doc_duoc_host_that():
+    """Thiếu pid:host hoặc các mount này thì nó chỉ thấy chính container nó."""
+    text = COMPOSE.read_text()
+    for frag in ("pid: host", "/proc:/host/proc:ro", "/sys:/host/sys:ro", "/:/rootfs:ro"):
+        assert frag in text, f"node-exporter thiếu {frag}"
+
+
+def test_dashboard_co_hang_host():
+    dash = json.loads((DASH_DIR / "voice-serving.json").read_text())
+    titles = [p.get("title") for p in dash["panels"]]
+    assert any((t or "").startswith("HOST") for t in titles), \
+        "chưa có hàng HOST trong dashboard"
+    assert any("nhiệt" in (t or "").lower() or "temp" in (t or "").lower() for t in titles), \
+        "chưa có panel nhiệt độ - đây là lý do chính thêm node_exporter trên Jetson"
+
+
+def test_node_exporter_full_da_gan_datasource():
+    """Dashboard 1860 dùng biến ${ds_prometheus}; provision bằng file thì không
+    ai thay biến đó, panel sẽ không biết hỏi datasource nào và trắng bảng."""
+    assert NODE_FULL.exists(), "chưa có node-exporter-full.json (dashboard 1860)"
+    text = NODE_FULL.read_text()
+    assert "${ds_prometheus}" not in text
+    assert '"uid": "prometheus"' in text

@@ -11,3 +11,9 @@ scrape_configs:
     # có namespace riêng, không va chạm với ai trên host.
     static_configs:
       - targets: ["asr:8002"]
+
+  # Tầng host: đĩa, RAM, CPU, và nhiệt độ Tegra qua collector thermal_zone.
+  # NVML không đọc được thông số Jetson nên đây là nguồn nhiệt duy nhất hiện có.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]

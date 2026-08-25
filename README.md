@@ -22,6 +22,7 @@ host — nên đổi cổng host không ảnh hưởng gì tới cấu hình bê
 | `4001` | `asr:8001` | data plane — Triton gRPC (đường streaming thật) |
 | `4002` | `prometheus:9090` | control plane — debug `/targets` |
 | `4003` | `grafana:3000` | control plane — dashboard |
+| *(không publish)* | `node-exporter:9100` | metric host: đĩa, RAM, CPU, nhiệt độ Tegra |
 | *(không publish)* | `asr:8002` | metrics — chỉ Prometheus trong network gọi |
 
 Thor là máy dùng chung: `voice-agent-asr-triton-1` giữ 8000/8001,
@@ -78,6 +79,21 @@ không cần Thor): `CCU_TTL_S` khớp giữa `serving/metrics.py`, `config.pbtx
 query dashboard; dashboard JSON khớp `build_dashboard.py`; giao tiếp nội bộ đi
 bằng tên service chứ không hard-code cổng.
 
+## Đưa image mới vào Thor
+
+Thor không pull được từ Docker Hub. Đường chuẩn là đóng gói ở máy dev rồi nạp
+vào — ví dụ với `node-exporter`:
+
+```bash
+# máy dev (nhớ --platform, Thor là arm64)
+docker pull --platform linux/arm64 prom/node-exporter:latest
+docker save prom/node-exporter:latest -o /tmp/node-exporter-arm64.tar
+rsync -avP /tmp/node-exporter-arm64.tar <user>@thor:/tmp/
+
+# Thor
+docker load -i /tmp/node-exporter-arm64.tar
+```
+
 ## Xem dashboard
 
 Prometheus/Grafana bind theo `${BIND_ADDR}` (mặc định `127.0.0.1`) — Thor dùng
@@ -87,7 +103,15 @@ chung nhiều người, không phơi metrics/admin ra LAN. Từ máy dev:
 ssh -L 4002:localhost:4002 -L 4003:localhost:4003 <user>@thor
 ```
 
-Rồi mở `http://localhost:4003` (Grafana) và `http://localhost:4002/targets`
+Dùng `127.0.0.1` chứ đừng gõ `localhost`: SSH thường không bind được IPv6
+loopback (`bind [::1]: Cannot assign requested address`), mà `localhost` lại
+hay phân giải sang `::1` trước.
+
+Ba dashboard được provision sẵn: `Voice Serving` (metric ứng dụng + host),
+`Triton` (nội tại server), và `Node Exporter Full` (dashboard cộng đồng ID 1860,
+~200 panel, dùng khi cần đào sâu tầng host).
+
+Rồi mở `http://127.0.0.1:4003` (Grafana) và `http://localhost:4002/targets`
 (Prometheus, để debug target UP/DOWN).
 
 ## Gọi từ máy khác
@@ -153,7 +177,7 @@ Tag theo git sha là đường rollback duy nhất khi không có registry giữ
 | `.env.example` | nguồn sự thật duy nhất cho cổng và tên |
 | `scripts/serving.sh` | vòng đời container, chỉ cần bash + docker |
 | `docker/Dockerfile.thor` | base `asr-triton:latest`, không cài thêm gì, chỉ kiểm CUDAExecutionProvider |
-| `config/prometheus.yml` | scrape `asr:8002` qua DNS network |
+| `config/prometheus.yml` | scrape `asr:8002` và `node-exporter:9100` qua DNS network |
 | `config/grafana/` | provisioning, dashboards, và `build_dashboard.py` sinh ra chúng |
 | `serving/metrics.py` | contract metric dùng chung — model.py và build_dashboard.py cùng import |
 | `model_repository/asr_streaming/` | copy nguyên từ `triton-voice-serving`, không đổi dòng nào |
@@ -173,5 +197,11 @@ Tag theo git sha là đường rollback duy nhất khi không có registry giữ
 - TTS (ZipVoice) — chưa kiểm `piper_phonemize` có wheel aarch64 hay không
 - Chuyển ASR sang TensorRT — ONNX Runtime CUDA EP đã chạy được; đáng làm sau khi
   có số RTF/latency thật để so
-- `jetson_exporter.py` cho EMC/power/thermal — dashboard hiện chỉ có panel tầng
-  ứng dụng và tầng Triton nội tại
+- Alert: hiện chưa có luật nào. Dashboard là thứ phải mở ra nhìn, production
+  cần thứ chủ động báo. Tối thiểu 4 luật: target down, error rate, queue depth,
+  đĩa sắp đầy.
+- GPU utilization và EMC bandwidth vẫn thiếu — NVML không đọc được trên Tegra
+  (log Triton: "Unable to get power limit ... value:0"), phải qua `tegrastats`.
+  Nhiệt độ thì node_exporter đã lo qua collector `thermal_zone`.
+- Độ trễ tới partial đầu tiên chưa được đo — đây mới là con số người dùng cuối
+  cảm nhận ở voice agent, `nv_inference_request_summary_us` chỉ đo mỗi chunk.

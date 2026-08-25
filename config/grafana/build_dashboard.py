@@ -156,6 +156,37 @@ ROWS = [
             ("GPU Memory used", ["nv_gpu_memory_used_bytes"], "bytes"),
         ],
     ),
+    (
+        # Trên Jetson, NVML không đọc được power/thermal (log Triton báo "Unable
+        # to get power limit ... value:0"). node_exporter đọc thẳng sysfs Tegra
+        # nên đây là nguồn nhiệt độ duy nhất hiện có - mà throttle nhiệt lại là
+        # chế độ hỏng hay gặp nhất của thiết bị biên.
+        "HOST (Thor)",
+        [
+            (
+                "Nhiệt độ theo thermal zone",
+                ["node_thermal_zone_temp"],
+                "celsius",
+            ),
+            (
+                "Đĩa còn trống",
+                ['100 * node_filesystem_avail_bytes{mountpoint="/"}'
+                 ' / node_filesystem_size_bytes{mountpoint="/"}'],
+                "percent",
+            ),
+            (
+                "RAM đang dùng",
+                ["100 * (1 - node_memory_MemAvailable_bytes"
+                 " / node_memory_MemTotal_bytes)"],
+                "percent",
+            ),
+            (
+                "CPU đang dùng",
+                ['100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[1m])))'],
+                "percent",
+            ),
+        ],
+    ),
 ]
 
 

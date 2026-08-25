@@ -89,6 +89,29 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  node-exporter:
+    profiles: [monitoring]
+    # Kéo về Thor bằng docker save/load từ máy dev - Thor không pull được.
+    image: prom/node-exporter:latest
+    container_name: thor-voice-node-exporter
+    # pid: host và ba mount dưới đây là bắt buộc. Thiếu chúng thì node-exporter
+    # chỉ nhìn thấy chính namespace của container: đĩa gần như trống, tiến
+    # trình đếm được vài cái, số nào cũng đẹp mà chẳng phản ánh Thor thật.
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      # Không khai --collector.filesystem.mount-points-exclude: mặc định của
+      # node_exporter đã loại /dev, /proc, /sys và lớp overlay của docker rồi.
+    # Không publish cổng 9100: chỉ prometheus trong network cần gọi.
+    restart: unless-stopped
+    logging: *logging
+
   grafana:
     profiles: [monitoring]
     # Cùng lý do :latest như prometheus.
