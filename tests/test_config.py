@@ -145,3 +145,14 @@ def test_log_runtime_bang_tieng_anh_ascii():
     for r in (_run_sh("help"), _run_sh("khong-ton-tai")):
         out = r.stdout + r.stderr
         assert out.isascii(), f"log có ký tự ngoài ASCII: {[c for c in out if not c.isascii()]}"
+
+
+def test_python_inline_trong_dockerfile_hop_le():
+    """Dòng nối `\\` thụt đầu dòng làm python3 -c nhận chuỗi thụt lề.
+
+    Lỗi này chỉ lộ ra lúc `docker build` trên Thor - compile ở đây bắt sớm.
+    """
+    text = (ROOT / "docker" / "Dockerfile.thor").read_text()
+    m = re.search(r'RUN python3 -c "(.*?)"\n', text, re.S)
+    assert m, "không tìm thấy RUN python3 -c trong Dockerfile.thor"
+    compile(m.group(1).replace("\\\n", ""), "<dockerfile>", "exec")
