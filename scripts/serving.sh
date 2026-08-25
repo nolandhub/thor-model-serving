@@ -69,17 +69,29 @@ cmd_health() {
   probe Prometheus "http://$BIND_ADDR:$PROM_PORT/-/healthy" || rc=1
   probe Grafana "http://$BIND_ADDR:$GRAFANA_PORT/api/health" || rc=1
 
-  # Vế thứ hai: prometheus có thật sự scrape được asr:8002 không. Target DOWN
-  # thì dashboard trống trơn mà chẳng có gì báo lỗi.
-  local targets
-  if targets="$(curl -sf --max-time 5 "http://$BIND_ADDR:$PROM_PORT/api/v1/targets" 2>/dev/null)"; then
-    if printf '%s' "$targets" | grep -q '"health":"up"'; then
-      printf '%-12s %-6s %s\n' "prom->asr" "UP" "asr:8002"
-    else
-      printf '%-12s %-6s %s\n' "prom->asr" "DOWN" "asr:8002 (check: ./scripts/serving.sh logs asr)"
+  # Vế thứ hai: prometheus có thật sự scrape được từng target không. Hỏi riêng
+  # từng job chứ không tìm "có target nào up không" - ASR sống mà node-exporter
+  # chết thì kiểu tìm chung sẽ báo xanh, đúng loại nói dối tệ nhất ở health check.
+  for job in triton node; do
+    local r
+    if ! r="$(curl -sf --max-time 5 --get \
+        "http://$BIND_ADDR:$PROM_PORT/api/v1/query" \
+        --data-urlencode "query=up{job=\"$job\"}" 2>/dev/null)"; then
+      printf '%-12s %-6s %s\n' "prom:$job" "?" "prometheus unreachable"
       rc=1
+      continue
     fi
-  fi
+    case "$r" in
+      *'"value":['*',"1"]'*)
+        printf '%-12s %-6s %s\n' "prom:$job" "UP" "scrape ok" ;;
+      *'"result":[]'*)
+        printf '%-12s %-6s %s\n' "prom:$job" "EMPTY" "no samples yet for this job"
+        rc=1 ;;
+      *)
+        printf '%-12s %-6s %s\n' "prom:$job" "DOWN" "scrape failing (check: ./scripts/serving.sh logs)"
+        rc=1 ;;
+    esac
+  done
   return $rc
 }
 
