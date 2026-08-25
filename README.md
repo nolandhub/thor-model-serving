@@ -29,10 +29,17 @@ Thor là máy dùng chung: `voice-agent-asr-triton-1` giữ 8000/8001,
 
 ## Chạy trên Thor
 
-Trọng số không tải trực tiếp trên Thor được (bị chặn ra internet). Từ máy dev:
+Repo đi bằng git, riêng trọng số thì không: Thor bị chặn ra internet nên
+không tải trực tiếp được, mà `*.onnx` cũng không commit. Chỉ ba file này nằm
+ngoài git (~49 MB) — `bpe.model` đã có sẵn trong repo.
 
 ```bash
-rsync -av model_repository/ thor:~/thor-voice-serving/model_repository/
+# trên Thor
+git clone <repo-này> ~/thor-voice-serving
+
+# trên máy dev
+rsync -avP --include='*/' --include='*.onnx' --exclude='*' \
+  model_repository/ <user>@thor:~/thor-voice-serving/model_repository/
 ```
 
 Rồi trên Thor:
@@ -151,6 +158,7 @@ Tag theo git sha là đường rollback duy nhất khi không có registry giữ
 | `serving/metrics.py` | contract metric dùng chung — model.py và build_dashboard.py cùng import |
 | `model_repository/asr_streaming/` | copy nguyên từ `triton-voice-serving`, không đổi dòng nào |
 | `tests/` | parity, bất biến cấu hình, và `dump_golden_asr.py` sinh fixture |
+| `docs/superpowers/specs/` | thiết kế của lần refactor này |
 
 ## Việc còn lại
 

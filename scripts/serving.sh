@@ -29,7 +29,8 @@ require_weights() {
   cat >&2 <<'MSG'
 
 Thor không ra được internet nên không tải trực tiếp được. Từ máy dev:
-  rsync -av model_repository/ thor:~/thor-voice-serving/model_repository/
+  rsync -avP --include='*/' --include='*.onnx' --exclude='*' \
+    model_repository/ <user>@thor:~/thor-voice-serving/model_repository/
 MSG
   exit 1
 }
