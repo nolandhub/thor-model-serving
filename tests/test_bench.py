@@ -1,0 +1,326 @@
+# ABOUTME: Test các hàm thuần của bench/ - chạy được khi Thor tắt, không cần GPU lẫn server
+# ABOUTME: Chạy: pytest tests/test_bench.py
+
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from bench.report import (  # noqa: E402
+    aggregate,
+    avg_batch,
+    bls_tax,
+    diff_counters,
+    drifts,
+    max_ccu_within_budget,
+    pct,
+    run_summary,
+)
+from bench.schedule import send_deadlines  # noqa: E402
+from bench.triton_metrics import counters_for_model, parse_exposition  # noqa: E402
+
+
+# --- pct: nearest-rank ------------------------------------------------------
+# Latency dùng nearest-rank chứ không nội suy: p99 phải là một mẫu CÓ THẬT đã
+# quan sát được, không phải số trung bình giữa hai mẫu không ai từng gặp.
+
+
+def test_pct_nearest_rank_tra_ve_mau_co_that():
+    values = list(range(1, 101))   # 1..100
+    assert pct(values, 50) == 50
+    assert pct(values, 99) == 99
+    assert pct(values, 100) == 100
+
+
+def test_pct_khong_noi_suy_giua_hai_mau():
+    assert pct([1, 2, 3, 4], 50) == 2
+
+
+def test_pct_khong_phu_thuoc_thu_tu_dau_vao():
+    assert pct([9, 1, 5, 3], 50) == pct([1, 3, 5, 9], 50)
+
+
+def test_pct_danh_sach_rong_bao_loi():
+    with pytest.raises(ValueError):
+        pct([], 50)
+
+
+# --- drifts -----------------------------------------------------------------
+# Mốc realtime hoàn hảo của chunk i là t_start + (i+1)*chunk_s: chunk i chứa
+# audio [i, i+1) nên hệ thống đúng nhịp phải trả kết quả ngay khi audio đó hết.
+# drift = 0 nghĩa là bám sát thời gian thực; drift TĂNG DẦN nghĩa là đang sập.
+
+
+def test_drift_bang_khong_khi_dung_nhip_thoi_gian_thuc():
+    assert drifts([0.2, 0.4, 0.6], t_start=0.0, chunk_s=0.2) == pytest.approx([0, 0, 0])
+
+
+def test_drift_tang_dan_khi_server_cham_hon_realtime():
+    d = drifts([0.25, 0.50, 0.75], t_start=0.0, chunk_s=0.2)
+    assert d == pytest.approx([0.05, 0.10, 0.15])
+    assert d[-1] > d[0], "drift phải phân kỳ khi mỗi chunk trễ thêm"
+
+
+def test_drift_am_khi_server_tra_som_hon_audio_ket_thuc():
+    assert drifts([0.15], t_start=0.0, chunk_s=0.2) == pytest.approx([-0.05])
+
+
+# --- avg_batch --------------------------------------------------------------
+# Chỉ số quyết định: BLS chỉ có nghĩa nếu Triton thật sự gộp được request.
+
+
+def test_avg_batch_la_ty_so_request_tren_exec():
+    assert avg_batch(request_count=40, exec_count=10) == 4.0
+
+
+def test_avg_batch_bang_mot_khi_khong_gop_duoc_gi():
+    assert avg_batch(request_count=37, exec_count=37) == 1.0
+
+
+def test_avg_batch_exec_bang_khong_bao_loi():
+    with pytest.raises(ValueError):
+        avg_batch(request_count=10, exec_count=0)
+
+
+# --- bls_tax ----------------------------------------------------------------
+# Chi phí copy tensor qua ranh giới model nằm ở compute_input + compute_output.
+
+
+def test_bls_tax_la_chi_phi_copy_chia_cho_compute_that():
+    assert bls_tax(compute_input_us=30, compute_infer_us=100, compute_output_us=20) == 0.5
+
+
+def test_bls_tax_bang_khong_khi_khong_co_copy():
+    assert bls_tax(compute_input_us=0, compute_infer_us=100, compute_output_us=0) == 0.0
+
+
+def test_bls_tax_compute_infer_bang_khong_bao_loi():
+    with pytest.raises(ValueError):
+        bls_tax(compute_input_us=5, compute_infer_us=0, compute_output_us=5)
+
+
+# --- diff_counters ----------------------------------------------------------
+# Counter Triton là cộng dồn. Server restart giữa hai snapshot làm nó tụt về 0,
+# lúc đó Δ âm - phải hỏng to chứ không được lặng lẽ trả số vô nghĩa.
+
+
+def test_diff_counters_tru_tung_metric():
+    assert diff_counters({"a": 10.0, "b": 5.0}, {"a": 25.0, "b": 5.0}) == {"a": 15.0, "b": 0.0}
+
+
+def test_diff_counters_am_bao_loi_vi_counter_da_reset():
+    with pytest.raises(ValueError, match="reset"):
+        diff_counters({"a": 100.0}, {"a": 3.0})
+
+
+def test_diff_counters_thieu_metric_o_snapshot_sau_bao_loi():
+    with pytest.raises(ValueError, match="a"):
+        diff_counters({"a": 1.0}, {})
+
+
+# --- max_ccu_within_budget --------------------------------------------------
+# Sức chứa là điểm CCU cao nhất mà MỌI mức thấp hơn cũng còn đạt ngưỡng. Một
+# mức vỡ rồi mà mức cao hơn lại đẹp thì đó là nhiễu, không phải sức chứa.
+
+
+def test_max_ccu_la_diem_cao_nhat_con_dat_nguong():
+    assert max_ccu_within_budget({1: 0.05, 2: 0.08, 4: 0.15, 8: 0.35}, budget_s=0.2) == 4
+
+
+def test_max_ccu_bang_khong_khi_ngay_mot_stream_da_vo():
+    assert max_ccu_within_budget({1: 0.5, 2: 0.6}, budget_s=0.2) == 0
+
+
+def test_max_ccu_khong_nhay_qua_muc_da_vo():
+    # 4 vỡ, 8 đẹp -> 8 là nhiễu, sức chứa vẫn dừng ở 2
+    assert max_ccu_within_budget({1: 0.05, 2: 0.1, 4: 0.9, 8: 0.12}, budget_s=0.2) == 2
+
+
+# --- send_deadlines ---------------------------------------------------------
+# Lịch gửi phải TUYỆT ĐỐI. Nếu tính bằng sleep(chunk) cộng dồn thì overhead của
+# chính client trôi vào mốc gửi, và drift đo được sẽ là drift của client chứ
+# không phải của server - hỏng đúng thứ bài bench sinh ra để đo.
+
+
+def test_send_deadlines_cach_deu_tu_moc_bat_dau():
+    assert send_deadlines(t_start=100.0, n=3, chunk_s=0.2) == pytest.approx([100.0, 100.2, 100.4])
+
+
+def test_send_deadlines_khong_troi_sau_nhieu_chunk():
+    d = send_deadlines(t_start=0.0, n=1000, chunk_s=0.2)
+    assert d[-1] == pytest.approx(999 * 0.2, abs=1e-9)
+
+
+# --- chunk_wav (đã có sẵn, chưa có test) ------------------------------------
+# client/common.py import soundfile ở đầu file, mà máy dev có thể chưa cài -
+# skip chứ không để cả module test hỏng, phần bench thuần vẫn phải chạy được.
+
+
+def test_chunk_wav_bo_phan_du_thay_vi_dem_im_lang():
+    pytest.importorskip("soundfile")
+    np = pytest.importorskip("numpy")
+    from client.common import SAMPLE_RATE, chunk_wav
+
+    wav = np.zeros(SAMPLE_RATE, dtype=np.float32)   # 1s
+    wav = np.concatenate([wav, np.zeros(100, dtype=np.float32)])
+    parts = chunk_wav(wav, chunk_ms=200)
+    assert len(parts) == 5
+    assert all(len(p) == SAMPLE_RATE * 200 // 1000 for p in parts)
+
+
+# --- parser định dạng text của Triton /metrics ------------------------------
+# Bench đọc thẳng localhost:8002/metrics TRONG container (compose cố ý không
+# publish 8002 ra host). Không qua Prometheus: chu kỳ scrape 15s mà một run chỉ
+# ~20s, hai snapshot có khi rơi vào cùng một điểm dữ liệu và Δ ra 0.
+
+EXPOSITION = """\
+# HELP nv_inference_request_success Number of successful inference requests
+# TYPE nv_inference_request_success counter
+nv_inference_request_success{model="asr_streaming",version="1"} 1234
+nv_inference_exec_count{model="asr_streaming",version="1"} 617
+nv_inference_compute_infer_duration_us{model="asr_streaming",version="1"} 1.234e+06
+nv_inference_exec_count{model="encoder",version="1"} 90
+
+# TYPE nv_gpu_utilization gauge
+nv_gpu_utilization{gpu_uuid="GPU-abc"} 0.73
+"""
+
+
+def test_parse_doc_duoc_ten_label_va_gia_tri():
+    samples = parse_exposition(EXPOSITION)
+    assert ("nv_inference_exec_count", {"model": "encoder", "version": "1"}, 90.0) in samples
+
+
+def test_parse_bo_qua_dong_chu_thich_va_dong_trong():
+    for name, _labels, _v in parse_exposition(EXPOSITION):
+        assert not name.startswith("#")
+    assert len(parse_exposition(EXPOSITION)) == 5
+
+
+def test_parse_hieu_ky_hieu_khoa_hoc():
+    # Triton xuất duration dạng 1.234e+06 - đọc bằng int() là vỡ
+    samples = parse_exposition(EXPOSITION)
+    value = next(v for n, _l, v in samples if n == "nv_inference_compute_infer_duration_us")
+    assert value == pytest.approx(1234000.0)
+
+
+def test_parse_dong_khong_co_label():
+    assert parse_exposition("nv_cpu_utilization 0.5\n") == [("nv_cpu_utilization", {}, 0.5)]
+
+
+# --- counters_for_model -----------------------------------------------------
+
+
+def test_counters_for_model_chi_lay_dung_model():
+    c = counters_for_model(parse_exposition(EXPOSITION), "encoder")
+    assert c == {"nv_inference_exec_count": 90.0}
+
+
+def test_counters_for_model_cong_don_qua_nhieu_version():
+    text = (
+        'nv_inference_exec_count{model="m",version="1"} 10\n'
+        'nv_inference_exec_count{model="m",version="2"} 5\n'
+    )
+    assert counters_for_model(parse_exposition(text), "m") == {"nv_inference_exec_count": 15.0}
+
+
+def test_counters_for_model_khong_co_mau_nao_bao_loi():
+    # Gõ sai tên model mà trả dict rỗng thì diff_counters cũng rỗng, avg_batch
+    # không bao giờ được gọi, và bench báo "xong" mà không đo gì cả.
+    with pytest.raises(ValueError, match="khong_ton_tai"):
+        counters_for_model(parse_exposition(EXPOSITION), "khong_ton_tai")
+
+
+# --- run_summary: gộp một run thành các metric quyết định --------------------
+# Numerator của avg_batch là nv_inference_count (Triton đã nhân batch size),
+# KHÔNG phải nv_inference_request_success (đếm request). Lấy nhầm thì tỷ số
+# luôn ra ~1.0 và bench kết luận sai rằng BLS không gom được gì.
+
+
+def _record(**over):
+    rec = {
+        "label": "baseline",
+        "ccu": 2,
+        "run": 0,
+        "chunk_s": 0.2,
+        "valid": True,
+        "counters_before": {
+            "nv_inference_count": 0.0,
+            "nv_inference_exec_count": 0.0,
+            "nv_inference_compute_input_duration_us": 0.0,
+            "nv_inference_compute_infer_duration_us": 0.0,
+            "nv_inference_compute_output_duration_us": 0.0,
+            "nv_inference_queue_duration_us": 0.0,
+        },
+        "counters_after": {
+            "nv_inference_count": 40.0,
+            "nv_inference_exec_count": 20.0,
+            "nv_inference_compute_input_duration_us": 30.0,
+            "nv_inference_compute_infer_duration_us": 100.0,
+            "nv_inference_compute_output_duration_us": 20.0,
+            "nv_inference_queue_duration_us": 800.0,
+        },
+        "streams": [
+            {"t_start": 0.0, "send": [0.0, 0.2], "recv": [0.25, 0.45]},
+            {"t_start": 0.0, "send": [0.0, 0.2], "recv": [0.10, 0.30]},
+        ],
+    }
+    rec.update(over)
+    return rec
+
+
+def test_run_summary_gop_latency_cua_moi_stream_vao_mot_phan_phoi():
+    # 4 chunk: 0.25, 0.25, 0.10, 0.10 -> max = 0.25
+    s = run_summary(_record())
+    assert s["max_latency_s"] == pytest.approx(0.25)
+
+
+def test_run_summary_lay_drift_cua_stream_te_nhat_khong_phai_trung_binh():
+    # stream 0 drift cuối = 0.45 - 0.4 = 0.05 ; stream 1 = 0.30 - 0.4 = -0.10
+    # Một stream tệ là một cuộc gọi tệ - trung bình sẽ giấu mất nó.
+    assert run_summary(_record())["final_drift_s"] == pytest.approx(0.05)
+
+
+def test_run_summary_tinh_avg_batch_tu_nv_inference_count():
+    assert run_summary(_record())["avg_batch"] == pytest.approx(2.0)
+
+
+def test_run_summary_tinh_bls_tax_tu_compute_input_va_output():
+    assert run_summary(_record())["bls_tax"] == pytest.approx(0.5)
+
+
+def test_run_summary_queue_tinh_tren_moi_request():
+    assert run_summary(_record())["queue_us_per_request"] == pytest.approx(20.0)
+
+
+# --- aggregate: gộp nhiều run của cùng một mức CCU ---------------------------
+
+
+def test_aggregate_lay_median_giua_cac_run():
+    runs = [
+        _record(run=0, streams=[{"t_start": 0.0, "send": [0.0], "recv": [0.10]}]),
+        _record(run=1, streams=[{"t_start": 0.0, "send": [0.0], "recv": [0.30]}]),
+        _record(run=2, streams=[{"t_start": 0.0, "send": [0.0], "recv": [0.20]}]),
+    ]
+    assert aggregate(runs)[2]["max_latency_s"] == pytest.approx(0.20)
+
+
+def test_aggregate_loai_run_danh_dau_invalid():
+    runs = [
+        _record(run=0, streams=[{"t_start": 0.0, "send": [0.0], "recv": [0.10]}]),
+        _record(run=1, valid=False, streams=[{"t_start": 0.0, "send": [0.0], "recv": [9.9]}]),
+    ]
+    assert aggregate(runs)[2]["max_latency_s"] == pytest.approx(0.10)
+
+
+def test_aggregate_khong_con_run_hop_le_nao_bao_loi():
+    with pytest.raises(ValueError, match="hợp lệ"):
+        aggregate([_record(valid=False)])
+
+
+def test_aggregate_tach_theo_tung_muc_ccu():
+    runs = [_record(ccu=1), _record(ccu=8)]
+    assert sorted(aggregate(runs)) == [1, 8]
