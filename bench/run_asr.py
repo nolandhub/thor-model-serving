@@ -3,11 +3,13 @@
 
 import argparse
 import functools
+import json
 import os
 import queue
 import re
 import subprocess
 import sys
+import urllib.request
 import statistics
 import threading
 import time
@@ -83,6 +85,46 @@ def metrics_reader(container, metrics_url):
     if container:
         return functools.partial(snapshot, container)
     raise ValueError("không có nguồn metrics: cần --metrics-url hoặc --container")
+
+
+def warmup_slice(chunks, n):
+    """n chunk đầu để chạy nóng, kết quả vứt đi.
+
+    Run đầu tiên sau khi Triton khởi động phải trả giá nạp ONNX, dựng CUDA
+    context và cấp workspace cho TỪNG instance. Không warmup thì toàn bộ chi
+    phí đó rơi vào mức CCU đo đầu tiên: đã thấy p99 0.434s ở CCU 1 trong khi
+    CCU 2 chỉ 0.146s, và max_ccu_within_budget quét từ dưới lên nên nó tin vào
+    số rác đó rồi kết luận sức chứa bằng 0.
+    """
+    return chunks[:n] if n > 0 else []
+
+
+def model_config_summary(cfg):
+    """Config Triton ĐANG CHẠY -> một dòng tóm tắt cho đầu báo cáo.
+
+    Hỏi server chứ không đọc config.pbtxt: Triton nạp file đó đúng một lần lúc
+    khởi động, nên sửa file mà quên restart thì bench đo lại cấu hình cũ và cho
+    ra bảng giống hệt bảng trước - đã mất hai lần đo vì đúng chuyện này.
+    """
+    groups = " + ".join(
+        f"{g.get('count', 1)} x {g.get('kind', '?')}" for g in cfg.get("instance_group", [])
+    )
+    parts = [cfg.get("name", "?"), f"instance {groups}", f"max_batch_size {cfg.get('max_batch_size')}"]
+    oldest = cfg.get("sequence_batching", {}).get("oldest")
+    if oldest:
+        parts.append(f"max_candidate_sequences {oldest.get('max_candidate_sequences')}")
+    return " | ".join(parts)
+
+
+def fetch_model_config(url):
+    """Config đang chạy, đọc qua HTTP. Không đọc được thì báo, không giết bench."""
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(url, timeout=5) as resp:
+            return json.load(resp)
+    except (OSError, ValueError) as exc:
+        print(f"  không đọc được config đang chạy ({exc}) - bảng sẽ không ghi cấu hình")
+        return None
 
 
 def clock_mhz(samples_hz):
@@ -197,6 +239,25 @@ def _run_stream(url, chunks, chunk_s, t_start, seq_id, out, errors):
         client.stop_stream()
 
 
+def warmup(args, chunks):
+    """Một stream ngắn gửi dồn, kết quả vứt đi - chỉ để đánh thức mọi instance.
+
+    Gửi dồn chứ không theo nhịp realtime: warmup không đo gì cả, ngủ giữa các
+    chunk chỉ tốn thời gian. Nhưng phải chạy hết chuỗi để mọi instance đều đã
+    nạp model - Triton phân sequence theo instance rảnh, gửi ít quá thì có
+    instance chưa bao giờ được đánh thức và nó sẽ trả giá nạp ngay trong lúc đo.
+    """
+    part = warmup_slice(chunks, args.warmup_chunks)
+    if not part:
+        return
+    print(f"  warmup {len(part)} chunk (kết quả bỏ)")
+    stream = {"t_start": time.monotonic(), "send": [], "recv": []}
+    errors = []
+    _run_stream(args.url, part, 0.0, time.monotonic(), int(time.time()) % 2**28 * 16, stream, errors)
+    if errors:
+        raise errors[0]
+
+
 def run_once(args, read_counters, ccu, chunks, run_idx):
     """Một run ở một mức CCU -> record đúng dạng report.run_summary() nhận."""
     before = read_counters(MODEL)
@@ -263,6 +324,10 @@ def main():
     # sequence dư nằm chờ ngoài cửa và cái đo được không còn là sức chứa model.
     ap.add_argument("--ccu", default="1,2,4,8")
     ap.add_argument("--runs", type=int, default=3, help="số run mỗi mức, lấy median")
+    # 25 chunk = 5s audio, gửi dồn nên chỉ tốn khoảng một giây. Đặt 0 để tắt
+    # khi biết chắc server đã chạy nóng từ trước.
+    ap.add_argument("--warmup-chunks", type=int, default=25, help="chunk chạy nóng, kết quả bỏ")
+    ap.add_argument("--config-url", help="vd http://asr:8000/v2/models/asr_streaming/config")
     # Mặc định = đúng độ dài một chunk: chậm hơn thế là trả kết quả không kịp
     # tốc độ audio vào, hàng đợi dồn vô hạn. Ngân sách rộng hơn sẽ báo "còn
     # trong ngưỡng" ở đúng mức tải mà drift đã cho thấy là đang sập.
@@ -286,6 +351,12 @@ def main():
     ccus = parse_ccus(args.ccu)
     print(f"{len(chunks)} chunk x {args.chunk_ms}ms = {len(chunks) * args.chunk_ms / 1000:.1f}s "
           f"audio/stream | CCU {ccus} | {args.runs} run/mức")
+
+    cfg = fetch_model_config(args.config_url) if args.config_url else None
+    cfg_line = model_config_summary(cfg) if cfg else "cấu hình đang chạy: không đọc được"
+    print(f"  {cfg_line}")
+
+    warmup(args, chunks)
 
     records = []
     for ccu in ccus:
@@ -314,6 +385,8 @@ def main():
         f"# Bench `{MODEL}`\n\n"
         f"{len(chunks) * args.chunk_ms / 1000:.1f}s audio/stream, chunk {args.chunk_ms}ms, "
         f"median của {args.runs} run. nvidia-smi lúc kết thúc: `{gpu}`.\n\n"
+        f"Cấu hình Triton ĐANG CHẠY lúc đo: `{cfg_line}`. Đọc từ server chứ không "
+        "từ config.pbtxt - sửa file mà quên restart thì Triton vẫn chạy cấu hình cũ.\n\n"
         "Cột **GPC** là trung vị clock GPU đo TRONG lúc chạy. Thor không báo được "
         "mình có bị hãm hay không (NVML không xuất throttle reason cho iGPU, "
         "`/sys/class/thermal` rỗng), nên đây là chứng cứ để đối chiếu giữa hai lần "

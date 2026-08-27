@@ -25,6 +25,8 @@ from bench.run_asr import (  # noqa: E402
     parse_ccus,
     ClockSampler,
     clock_mhz,
+    model_config_summary,
+    warmup_slice,
     throttled,
     without_proxy_env,
 )
@@ -522,3 +524,51 @@ def test_clock_sampler_duong_dan_khong_ton_tai_khong_giet_run(tmp_path):
     sampler = ClockSampler(tmp_path / "khong-co")
     sampler.start()
     assert sampler.stop() == {"p50": 0.0, "max": 0.0}
+
+
+# --- warmup_slice: dòng CCU đầu tiên sau restart là rác nếu thiếu ------------
+
+
+def test_warmup_slice_lay_dung_so_chunk_dau():
+    assert warmup_slice(list(range(50)), 10) == list(range(10))
+
+
+def test_warmup_slice_nhieu_hon_so_chunk_co_thi_lay_het():
+    assert warmup_slice([1, 2, 3], 99) == [1, 2, 3]
+
+
+def test_warmup_slice_khong_duong_thi_bo_warmup():
+    # --warmup-chunks 0 là cách tắt warmup khi server đã chạy nóng sẵn
+    assert warmup_slice([1, 2, 3], 0) == []
+
+
+# --- model_config_summary: bảng phải tự khai mình đo cấu hình nào -----------
+# Đã mất hai lần bench (30 phút) vì đo lại đúng cấu hình cũ mà không ai biết:
+# Triton nạp config.pbtxt một lần lúc khởi động, sửa file mà không restart thì
+# số cũ trở lại y hệt. Hỏi thẳng server đang chạy gì là hết cửa nhầm.
+
+_CFG = {
+    "name": "asr_streaming",
+    "max_batch_size": 8,
+    "instance_group": [{"count": 4, "kind": "KIND_GPU"}],
+    "sequence_batching": {"oldest": {"max_candidate_sequences": 8}},
+}
+
+
+def test_model_config_summary_gom_du_bon_so_quyet_dinh():
+    out = model_config_summary(_CFG)
+    assert "asr_streaming" in out
+    assert "4 x KIND_GPU" in out
+    assert "max_batch_size 8" in out
+    assert "max_candidate_sequences 8" in out
+
+
+def test_model_config_summary_nhieu_instance_group():
+    cfg = {**_CFG, "instance_group": [{"count": 2, "kind": "KIND_GPU"},
+                                      {"count": 1, "kind": "KIND_CPU"}]}
+    assert "2 x KIND_GPU + 1 x KIND_CPU" in model_config_summary(cfg)
+
+
+def test_model_config_summary_khong_co_sequence_batching():
+    cfg = {k: v for k, v in _CFG.items() if k != "sequence_batching"}
+    assert "max_candidate_sequences" not in model_config_summary(cfg)
