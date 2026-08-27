@@ -144,6 +144,9 @@ def run_summary(record):
         "avg_batch": avg_batch(d[COUNT], d[EXEC]),
         "bls_tax": bls_tax(d[C_IN], d[C_INFER], d[C_OUT]),
         "queue_us_per_request": d[QUEUE] / d[COUNT] if d[COUNT] else 0.0,
+        # Không phải chỉ số hiệu năng - là chứng cứ để đối chiếu hai lần đo với
+        # nhau. Thor không báo được mình có bị hãm hay không (xem clock_mhz).
+        "gpu_mhz_p50": record.get("clock", {}).get("p50", 0.0),
     }
 
 

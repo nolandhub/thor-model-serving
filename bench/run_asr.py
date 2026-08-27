@@ -8,6 +8,7 @@ import queue
 import re
 import subprocess
 import sys
+import statistics
 import threading
 import time
 from pathlib import Path
@@ -20,6 +21,12 @@ from bench.schedule import send_deadlines  # noqa: E402
 from bench.triton_metrics import snapshot, snapshot_http  # noqa: E402
 
 MODEL = "asr_streaming"
+# Clock GPC của Tegra. nvidia-smi trên Thor trả [N/A] cho clocks.sm và cho cả
+# clocks_throttle_reasons (NVML không xuất hai thứ đó cho iGPU), còn
+# /sys/class/thermal thì rỗng - không có cooling device nào để hỏi "có đang bị
+# hãm không". Đây là nguồn duy nhất còn lại.
+GPC_CUR_FREQ = "/sys/class/devfreq/gpu-gpc-0/cur_freq"
+CLOCK_SAMPLE_S = 0.5
 # Cột nào lên bảng và in ra sao. avg_batch để 2 chữ số vì cả quyết định BLS nằm
 # ở chỗ nó là 1.0 hay lớn hơn - làm tròn 1 chữ số sẽ nuốt mất khác biệt đó.
 COLUMNS = [
@@ -28,6 +35,7 @@ COLUMNS = [
     ("avg_batch", "avg_batch", "{:.2f}"),
     ("bls_tax", "bls_tax", "{:.2f}"),
     ("queue_us_per_request", "queue (µs/req)", "{:.0f}"),
+    ("gpu_mhz_p50", "GPC (MHz)", "{:.0f}"),
 ]
 
 
@@ -75,6 +83,51 @@ def metrics_reader(container, metrics_url):
     if container:
         return functools.partial(snapshot, container)
     raise ValueError("không có nguồn metrics: cần --metrics-url hoặc --container")
+
+
+def clock_mhz(samples_hz):
+    """Các mẫu tần số (Hz) -> {p50, max} tính bằng MHz. Rỗng thì trả 0.
+
+    Trung vị chứ không trung bình: devfreq hạ clock khi rảnh (315MHz lúc idle
+    trên 1575MHz trần), nên vài mẫu đầu run luôn thấp và sẽ kéo lệch trung bình.
+
+    Đây KHÔNG phải chỉ số hãm - clock thấp có thể chỉ là GPU đang rảnh. Nó là
+    số để đối chiếu GIỮA các lần đo: cùng một mức tải mà lần này clock thấp hơn
+    hẳn lần trước thì bảng đó không so được với bảng trước.
+    """
+    if not samples_hz:
+        return {"p50": 0.0, "max": 0.0}
+    return {
+        "p50": statistics.median(samples_hz) / 1e6,
+        "max": max(samples_hz) / 1e6,
+    }
+
+
+class ClockSampler(threading.Thread):
+    """Đọc clock GPC đều đặn trong lúc run chạy.
+
+    Phải lấy mẫu LÚC ĐANG TẢI. Đọc một phát lúc run kết thúc thì GPU đã rảnh và
+    lần nào cũng ra 315MHz - một con số đúng mà vô nghĩa, tệ hơn là không có.
+    """
+
+    def __init__(self, path=GPC_CUR_FREQ):
+        super().__init__(daemon=True)
+        self.path = Path(path)
+        self.samples = []
+        self._stop = threading.Event()
+
+    def run(self):
+        while not self._stop.is_set():
+            try:
+                self.samples.append(int(self.path.read_text().strip()))
+            except (OSError, ValueError):
+                return        # không có devfreq - im lặng bỏ cột, không giết run
+            self._stop.wait(CLOCK_SAMPLE_S)
+
+    def stop(self):
+        self._stop.set()
+        self.join(timeout=2)
+        return clock_mhz(self.samples)
 
 
 def throttled(reasons):
@@ -148,6 +201,8 @@ def run_once(args, read_counters, ccu, chunks, run_idx):
 
     # Mọi stream chung một t_start: chúng phải chồng lấn thật thì dynamic
     # batcher mới có gì để gom, và avg_batch mới nói lên điều gì.
+    sampler = ClockSampler()
+    sampler.start()
     t_start = time.monotonic() + 0.5   # đệm để thread cuối kịp mở connection
     streams = [{"t_start": t_start, "send": [], "recv": []} for _ in range(ccu)]
     errors = []
@@ -164,6 +219,7 @@ def run_once(args, read_counters, ccu, chunks, run_idx):
         t.start()
     for t in threads:
         t.join()
+    clock = sampler.stop()
     if errors:
         raise errors[0]
 
@@ -174,7 +230,7 @@ def run_once(args, read_counters, ccu, chunks, run_idx):
         print(f"    bỏ run: GPU bị hãm ({gpu_before} -> {gpu_after})")
     return {
         "ccu": ccu, "run": run_idx, "chunk_s": args.chunk_ms / 1000,
-        "valid": valid, "streams": streams,
+        "valid": valid, "streams": streams, "clock": clock,
         "counters_before": before, "counters_after": after,
     }
 
@@ -204,7 +260,10 @@ def main():
     # sequence dư nằm chờ ngoài cửa và cái đo được không còn là sức chứa model.
     ap.add_argument("--ccu", default="1,2,4,8")
     ap.add_argument("--runs", type=int, default=3, help="số run mỗi mức, lấy median")
-    ap.add_argument("--budget-s", type=float, default=0.5, help="ngưỡng p99 để tính CCU tối đa")
+    # Mặc định = đúng độ dài một chunk: chậm hơn thế là trả kết quả không kịp
+    # tốc độ audio vào, hàng đợi dồn vô hạn. Ngân sách rộng hơn sẽ báo "còn
+    # trong ngưỡng" ở đúng mức tải mà drift đã cho thấy là đang sập.
+    ap.add_argument("--budget-s", type=float, help="ngưỡng p99 để tính CCU tối đa (mặc định: chunk)")
     ap.add_argument("--cooldown-s", type=float, default=10.0, help="nghỉ giữa hai run cho nguội")
     ap.add_argument("--out", default=str(ROOT / "bench/results/asr_streaming.md"))
     args = ap.parse_args()
@@ -212,6 +271,9 @@ def main():
     # Phải xoá TRƯỚC khi import tritonclient: grpc đọc proxy lúc mở channel.
     os.environ.clear()
     os.environ.update(_env_no_proxy)
+
+    if args.budget_s is None:
+        args.budget_s = args.chunk_ms / 1000
 
     read_counters = metrics_reader(args.container, args.metrics_url)
 
@@ -248,7 +310,11 @@ def main():
     body = (
         f"# Bench `{MODEL}`\n\n"
         f"{len(chunks) * args.chunk_ms / 1000:.1f}s audio/stream, chunk {args.chunk_ms}ms, "
-        f"median của {args.runs} run. GPU lúc kết thúc: `{gpu}`.\n\n"
+        f"median của {args.runs} run. nvidia-smi lúc kết thúc: `{gpu}`.\n\n"
+        "Cột **GPC** là trung vị clock GPU đo TRONG lúc chạy. Thor không báo được "
+        "mình có bị hãm hay không (NVML không xuất throttle reason cho iGPU, "
+        "`/sys/class/thermal` rỗng), nên đây là chứng cứ để đối chiếu giữa hai lần "
+        "đo: cùng mức tải mà clock lệch nhiều thì hai bảng không so với nhau được.\n\n"
         f"{table}\n\n{verdict}\n"
     )
     out = Path(args.out)

@@ -23,6 +23,7 @@ from bench.run_asr import (  # noqa: E402
     markdown_table,
     metrics_reader,
     parse_ccus,
+    clock_mhz,
     throttled,
     without_proxy_env,
 )
@@ -387,9 +388,9 @@ def test_throttled_khong_doc_duoc_thi_coi_nhu_khong_ham():
 def test_markdown_table_mot_dong_moi_muc_ccu():
     agg = {
         1: {"p99_latency_s": 0.12, "final_drift_s": 0.01, "avg_batch": 1.0,
-            "bls_tax": 0.5, "queue_us_per_request": 20.0},
+            "bls_tax": 0.5, "queue_us_per_request": 20.0, "gpu_mhz_p50": 1575.0},
         4: {"p99_latency_s": 0.40, "final_drift_s": 0.30, "avg_batch": 2.5,
-            "bls_tax": 0.6, "queue_us_per_request": 90.0},
+            "bls_tax": 0.6, "queue_us_per_request": 90.0, "gpu_mhz_p50": 1566.0},
     }
     rows = [line for line in markdown_table(agg).splitlines() if line.startswith("| ")]
     assert len(rows) == 3          # header + 2 mức CCU
@@ -479,3 +480,24 @@ def test_run_summary_thieu_counter_can_dung_bao_loi():
     del rec["counters_before"]["nv_inference_exec_count"]
     with pytest.raises(ValueError, match="nv_inference_exec_count"):
         run_summary(rec)
+
+
+# --- clock_mhz: Thor không báo throttle, chỉ còn cách tự nhìn clock ----------
+# nvidia-smi trên Tegra trả [N/A] cho clocks.sm lẫn throttle reasons, và
+# /sys/class/thermal rỗng - không có cooling device nào để hỏi. Thứ duy nhất
+# đọc được là tần số GPC, và nó chỉ có nghĩa khi lấy mẫu LÚC ĐANG TẢI.
+
+
+def test_clock_mhz_doi_hz_sang_mhz():
+    assert clock_mhz([1575000000, 1575000000]) == {"p50": 1575.0, "max": 1575.0}
+
+
+def test_clock_mhz_lay_trung_vi_khong_phai_trung_binh():
+    # Vài mẫu đầu rơi vào lúc governor chưa kịp lên - trung bình sẽ bị chúng kéo
+    assert clock_mhz([315000000, 1575000000, 1566000000])["p50"] == 1566.0
+
+
+def test_clock_mhz_khong_doc_duoc_thi_tra_khong():
+    # Không có devfreq (chạy trên GPU rời, hoặc /sys không mount) - cột để trống
+    # chứ không được bịa số, và tuyệt đối không được làm hỏng cả run
+    assert clock_mhz([]) == {"p50": 0.0, "max": 0.0}

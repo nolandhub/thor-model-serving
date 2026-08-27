@@ -46,6 +46,6 @@ sequence_batching {
 instance_group [
   {
     kind: KIND_GPU
-    count: 2
+    count: 4
   }
 ]
