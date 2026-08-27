@@ -53,6 +53,29 @@ def per_sample_ms(times_s, batch):
     return statistics.median(times_s) / batch * 1000
 
 
+def state_bytes(specs, symbol, batch):
+    """Tổng byte của state encoder cho một stream. specs = [(shape, dtype)].
+
+    Đây là thước đo bls_tax dựng trước khi viết BLS: tách encoder thành model
+    riêng thì toàn bộ cache này phải serialize qua ranh giới model MỖI chunk
+    MỖI stream, hai lượt vào và ra. State nặng thì thuế ăn hết phần thắng nhờ
+    batch, và biết trước rẻ hơn nhiều so với biết sau khi đã refactor xong.
+
+    Chiều động không phải batch tính là 1 - không có gì để suy ra độ dài thật,
+    nên con số trả về là CẬN DƯỚI, chỗ in ra phải nói rõ điều đó.
+    """
+    total = 0
+    for shape, dtype in specs:
+        n = 1
+        for dim in shape:
+            if isinstance(dim, str):
+                n *= batch if dim == symbol else 1
+            else:
+                n *= dim
+        total += n * np.dtype(dtype).itemsize
+    return total
+
+
 def build_feeds(session, batch, symbol):
     """Feed đầy đủ cho một lần chạy encoder ở cỡ batch cho trước.
 
@@ -106,6 +129,12 @@ def main():
             "chạy batch được, và đó đã là câu trả lời: BLS không gom được gì"
         )
     print(f"input {x.name} {x.shape}, ký hiệu batch {symbol!r}")
+
+    specs = [(i.shape, _ORT_TO_NP[i.type]) for i in session.get_inputs()[1:]]
+    if specs:
+        per_stream = state_bytes(specs, symbol, 1)
+        print(f"state: {len(specs)} tensor, {per_stream / 1024:.1f} KiB mỗi stream "
+              f"(cận dưới) - BLS phải chuyển ngần này qua ranh giới model 2 lượt mỗi chunk")
 
     base = None
     print("\n| batch | ms/lần chạy | ms/mẫu | nhanh hơn batch 1 |")

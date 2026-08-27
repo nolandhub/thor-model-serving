@@ -10,7 +10,12 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from bench.encoder_batch import batch_axis, per_sample_ms, tile_state  # noqa: E402
+from bench.encoder_batch import (  # noqa: E402
+    batch_axis,
+    per_sample_ms,
+    state_bytes,
+    tile_state,
+)
 
 
 # --- batch_axis: tìm chiều batch bằng TÊN ký hiệu, không đoán vị trí ---------
@@ -72,3 +77,32 @@ def test_per_sample_ms_lay_trung_vi():
 def test_per_sample_ms_rong_bao_loi():
     with pytest.raises(ValueError):
         per_sample_ms([], 1)
+
+
+# --- state_bytes: thước đo bls_tax trước khi viết một dòng BLS nào -----------
+# Cache encoder phải serialize qua ranh giới model MỖI chunk MỖI stream, hai
+# lượt (vào + ra). State càng nặng thì thuế càng ăn mất phần thắng nhờ batch.
+
+
+def test_state_bytes_cong_don_moi_tensor():
+    specs = [(["N", 4], np.float32), (["N", 8], np.float32)]
+    assert state_bytes(specs, "N", 1) == (4 + 8) * 4
+
+
+def test_state_bytes_nhan_theo_batch():
+    specs = [(["N", 10], np.float32)]
+    assert state_bytes(specs, "N", 8) == 10 * 4 * 8
+
+
+def test_state_bytes_ton_trong_dtype():
+    # fp16 nhẹ bằng nửa fp32 - nhầm dtype là ước lượng thuế sai gấp đôi
+    assert state_bytes([([1, 100], np.float16)], "N", 1) == 200
+
+
+def test_state_bytes_chieu_dong_khac_batch_tinh_la_1():
+    # Không có gì để suy ra độ dài thật, lấy 1 và để phần in ra nói rõ là CẬN DƯỚI
+    assert state_bytes([(["N", "T", 4], np.float32)], "N", 1) == 16
+
+
+def test_state_bytes_khong_co_state_thi_bang_khong():
+    assert state_bytes([], "N", 8) == 0
