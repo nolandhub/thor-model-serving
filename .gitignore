@@ -13,6 +13,3 @@ __pycache__/
 
 # Báo cáo bench - sinh lại được từ bench/run_asr.py, số phụ thuộc máy đo
 bench/results/
-
-# SDD workspace (subagent-driven-development) - scratch, không commit
-.superpowers/
