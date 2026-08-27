@@ -23,6 +23,7 @@ from bench.run_asr import (  # noqa: E402
     markdown_table,
     metrics_reader,
     parse_ccus,
+    ClockSampler,
     clock_mhz,
     throttled,
     without_proxy_env,
@@ -501,3 +502,23 @@ def test_clock_mhz_khong_doc_duoc_thi_tra_khong():
     # Không có devfreq (chạy trên GPU rời, hoặc /sys không mount) - cột để trống
     # chứ không được bịa số, và tuyệt đối không được làm hỏng cả run
     assert clock_mhz([]) == {"p50": 0.0, "max": 0.0}
+
+
+def test_clock_sampler_chay_va_dung_duoc(tmp_path):
+    """Vòng đời thread thật, không mock.
+
+    Bản đầu đặt Event tên `_stop`, đè lên method nội bộ của threading.Thread, và
+    chết ngay ở join() - nhưng chỉ chết khi CHẠY THẬT, mọi test hàm thuần vẫn
+    xanh. Test này là chỗ bắt được loại đó.
+    """
+    freq = tmp_path / "cur_freq"
+    freq.write_text("1575000000\n")
+    sampler = ClockSampler(freq)
+    sampler.start()
+    assert sampler.stop() == {"p50": 1575.0, "max": 1575.0}
+
+
+def test_clock_sampler_duong_dan_khong_ton_tai_khong_giet_run(tmp_path):
+    sampler = ClockSampler(tmp_path / "khong-co")
+    sampler.start()
+    assert sampler.stop() == {"p50": 0.0, "max": 0.0}

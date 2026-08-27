@@ -114,18 +114,21 @@ class ClockSampler(threading.Thread):
         super().__init__(daemon=True)
         self.path = Path(path)
         self.samples = []
-        self._stop = threading.Event()
+        self._done = threading.Event()
 
     def run(self):
-        while not self._stop.is_set():
+        while not self._done.is_set():
             try:
                 self.samples.append(int(self.path.read_text().strip()))
             except (OSError, ValueError):
                 return        # không có devfreq - im lặng bỏ cột, không giết run
-            self._stop.wait(CLOCK_SAMPLE_S)
+            self._done.wait(CLOCK_SAMPLE_S)
 
     def stop(self):
-        self._stop.set()
+        # Tên `_done` chứ không `_stop`: threading.Thread có sẵn method nội bộ
+        # tên _stop và join() gọi nó trên Python 3.12 - đặt Event đè lên là
+        # TypeError ngay giữa run, mà chỉ lộ ra khi chạy thật.
+        self._done.set()
         self.join(timeout=2)
         return clock_mhz(self.samples)
 
