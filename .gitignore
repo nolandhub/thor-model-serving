@@ -1,5 +1,5 @@
 # Trọng số model - Thor không ra được internet, rsync từ máy dev sang (xem README)
-*.onnx
+
 *.bin
 
 # Cấu hình cục bộ của từng máy - commit .env.example thay vì file này
