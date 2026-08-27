@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from bench.report import aggregate, max_ccu_within_budget  # noqa: E402
+from bench.report import aggregate, max_ccu_within_budget, run_summary  # noqa: E402
 from bench.schedule import send_deadlines  # noqa: E402
 from bench.triton_metrics import snapshot, snapshot_http  # noqa: E402
 
@@ -226,7 +226,14 @@ def main():
     for ccu in ccus:
         for run_idx in range(args.runs):
             print(f"  CCU {ccu} run {run_idx + 1}/{args.runs}")
-            records.append(run_once(args, read_counters, ccu, chunks, run_idx))
+            rec = run_once(args, read_counters, ccu, chunks, run_idx)
+            records.append(rec)
+            # Tổng kết ngay từng run, không đợi tới aggregate: một run hỏng ở
+            # phút thứ nhất mà tới phút thứ mười lăm mới báo là mất trắng cả
+            # phép đo. Vừa fail-fast vừa cho thấy số đang đi về đâu.
+            s = run_summary(rec)
+            print(f"    p99 {s['p99_latency_s']:.3f}s | drift cuối {s['final_drift_s']:+.2f}s "
+                  f"| avg_batch {s['avg_batch']:.2f}")
             time.sleep(args.cooldown_s)
 
     agg = aggregate(records)

@@ -442,3 +442,40 @@ def test_without_proxy_env_khong_sua_dict_goc():
     env = {"http_proxy": "http://gw:8080"}
     without_proxy_env(env)
     assert env == {"http_proxy": "http://gw:8080"}
+
+
+# --- run_summary chỉ diff counter đơn điệu ----------------------------------
+
+
+def test_run_summary_bo_qua_summary_va_gauge_khong_don_dieu():
+    """Triton xuất cả summary (cửa sổ trượt) lẫn gauge cạnh counter.
+
+    nv_inference_request_summary_us TỤT là chuyện bình thường của summary, còn
+    pending_request_count là gauge. Bắt chúng phải tăng thì bench chết oan sau
+    khi đã chạy xong toàn bộ phép đo - đúng loại hỏng đắt nhất.
+    """
+    rec = _record()
+    rec["counters_before"] = {**rec["counters_before"],
+                              "nv_inference_request_summary_us": 355745.0,
+                              "nv_inference_pending_request_count": 3.0}
+    rec["counters_after"] = {**rec["counters_after"],
+                             "nv_inference_request_summary_us": 182279.0,
+                             "nv_inference_pending_request_count": 0.0}
+    assert run_summary(rec)["avg_batch"] == pytest.approx(2.0)
+
+
+def test_run_summary_van_bat_duoc_counter_that_su_reset():
+    # Chốt chặn phải còn sống với counter thật: server restart giữa run thì Δ
+    # âm sẽ lặng lẽ chảy vào avg_batch thành một kết luận sai không truy ra được
+    rec = _record()
+    rec["counters_before"] = dict(rec["counters_after"])
+    rec["counters_after"] = {**rec["counters_after"], "nv_inference_count": 0.0}
+    with pytest.raises(ValueError, match="reset"):
+        run_summary(rec)
+
+
+def test_run_summary_thieu_counter_can_dung_bao_loi():
+    rec = _record()
+    del rec["counters_before"]["nv_inference_exec_count"]
+    with pytest.raises(ValueError, match="nv_inference_exec_count"):
+        run_summary(rec)

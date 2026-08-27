@@ -104,6 +104,21 @@ C_OUT = "nv_inference_compute_output_duration_us"
 QUEUE = "nv_inference_queue_duration_us"
 
 
+# Chỉ sáu cái này là counter đơn điệu. Triton xuất cạnh chúng cả summary
+# (nv_inference_request_summary_us - cửa sổ trượt, tụt xuống là bình thường) và
+# gauge (pending_request_count), nên KHÔNG được diff cả snapshot: chốt chặn
+# "counter reset" sẽ bắn nhầm vào summary và giết cả run sau khi đã đo xong.
+NEEDED = (COUNT, EXEC, C_IN, C_INFER, C_OUT, QUEUE)
+
+
+def only_counters(snapshot):
+    """Lọc snapshot còn đúng các counter đơn điệu mà bench dùng."""
+    missing = [name for name in NEEDED if name not in snapshot]
+    if missing:
+        raise ValueError(f"snapshot thiếu counter {missing} - kiểm tên model và version Triton")
+    return {name: snapshot[name] for name in NEEDED}
+
+
 def run_summary(record):
     """Một run -> các metric quyết định. Ném lỗi nếu counter đã reset."""
     lat = [
@@ -117,7 +132,9 @@ def run_summary(record):
         drifts(stream["recv"], stream["t_start"], record["chunk_s"])[-1]
         for stream in record["streams"]
     )
-    d = diff_counters(record["counters_before"], record["counters_after"])
+    d = diff_counters(
+        only_counters(record["counters_before"]), only_counters(record["counters_after"])
+    )
     return {
         "p50_latency_s": pct(lat, 50),
         "p95_latency_s": pct(lat, 95),
