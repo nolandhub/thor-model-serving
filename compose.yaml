@@ -1,6 +1,21 @@
 # ABOUTME: Toàn bộ stack - ASR Triton + Prometheus + Grafana trên một bridge network riêng
 # ABOUTME: Không chạy trực tiếp, dùng ./scripts/serving.sh (nó lo .env và profile)
 
+# Docker tiêm proxy công ty vào MỌI container lúc tạo, lấy từ mục "proxies"
+# trong ~/.docker/config.json. Container nào gọi container khác trong network
+# này đều bị lái qua gateway và ăn "connection refused" - Grafana không vẽ nổi
+# panel nào, Prometheus không scrape nổi target nào, bench không đọc nổi
+# /metrics. Ở đây toàn là tên service nội bộ, không có gì phải đi ra ngoài.
+x-no-proxy: &no-proxy
+  http_proxy: ""
+  https_proxy: ""
+  HTTP_PROXY: ""
+  HTTPS_PROXY: ""
+  all_proxy: ""
+  ALL_PROXY: ""
+  no_proxy: ""
+  NO_PROXY: ""
+
 x-logging: &logging
   # Container thường trú không xoay log là đầy đĩa Thor - mà Thor là máy dùng chung.
   driver: json-file
@@ -23,6 +38,7 @@ services:
         no_proxy: ${no_proxy:-}
     image: thor-voice-serving-asr:${IMAGE_TAG}
     container_name: thor-asr-triton
+    environment: *no-proxy
     # Dạng deploy.resources thay cho `gpus: all` (key mới, cần Compose v2.30+).
     # Thor có thể chạy bản cũ hơn, dạng này được hỗ trợ từ lâu hơn nhiều.
     deploy:
@@ -97,13 +113,7 @@ services:
     # nó: không xoá thì bench gửi request tới gateway thay vì tới asr và bị
     # refuse. Xoá ở đây để mọi entrypoint (kể cả lệnh chẩn đoán gõ tay) đều
     # sạch; run_asr.py còn xoá lần nữa trong tiến trình cho chắc.
-    environment:
-      http_proxy: ""
-      https_proxy: ""
-      HTTP_PROXY: ""
-      HTTPS_PROXY: ""
-      all_proxy: ""
-      no_proxy: ""
+    environment: *no-proxy
     # Cổng nằm ở entrypoint chứ không ở command: `compose run` GHI ĐÈ command,
     # để cờ ở đó thì mọi lần truyền thêm tham số sẽ mất đường tới server.
     # 8002 không publish ra host, nhưng trong network này thì tới thẳng được.
@@ -122,6 +132,7 @@ services:
     # :latest là bản duy nhất đã nằm sẵn trong cache local. Ghim sẽ pull fail.
     image: prom/prometheus:latest
     container_name: thor-voice-prometheus
+    environment: *no-proxy
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -142,6 +153,7 @@ services:
     # Kéo về Thor bằng docker save/load từ máy dev - Thor không pull được.
     image: prom/node-exporter:latest
     container_name: thor-voice-node-exporter
+    environment: *no-proxy
     # pid: host và ba mount dưới đây là bắt buộc. Thiếu chúng thì node-exporter
     # chỉ nhìn thấy chính namespace của container: đĩa gần như trống, tiến
     # trình đếm được vài cái, số nào cũng đẹp mà chẳng phản ánh Thor thật.
@@ -170,6 +182,7 @@ services:
       - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     environment:
+      <<: *no-proxy
       # Chỉ vào được qua SSH tunnel -> đúng một người mỗi lần. Nếu đổi
       # ${BIND_ADDR} thành IP LAN thì PHẢI tắt anonymous admin trước.
       GF_AUTH_ANONYMOUS_ENABLED: "true"
