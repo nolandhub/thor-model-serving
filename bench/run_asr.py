@@ -3,6 +3,7 @@
 
 import argparse
 import functools
+import os
 import queue
 import re
 import subprocess
@@ -45,6 +46,21 @@ def parse_ccus(spec):
     if not out:
         raise ValueError(f"không đọc được mức CCU nào từ {spec!r}")
     return sorted(out)
+
+
+def without_proxy_env(env):
+    """env đã bỏ mọi biến proxy - bench chỉ nói chuyện trong network compose.
+
+    Image base có sẵn http_proxy của công ty, mà CẢ urllib LẪN grpc đều đọc nó:
+    để nguyên thì bench gửi mọi thứ tới gateway công ty thay vì tới asr, và
+    gateway refuse. Prometheus không dính vì nó là container khác, viết bằng Go
+    và không có biến đó - nên metrics vẫn xanh trong khi bench chết, một cặp
+    triệu chứng rất dễ đọc nhầm thành lỗi network.
+    """
+    return {
+        k: v for k, v in env.items()
+        if k.lower() not in ("http_proxy", "https_proxy", "all_proxy", "no_proxy", "grpc_proxy")
+    }
 
 
 def metrics_reader(container, metrics_url):
@@ -175,6 +191,7 @@ def markdown_table(agg):
 
 
 def main():
+    _env_no_proxy = without_proxy_env(os.environ)
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="localhost:8001")
     ap.add_argument("--container", default="thor-asr-triton",
@@ -191,6 +208,10 @@ def main():
     ap.add_argument("--cooldown-s", type=float, default=10.0, help="nghỉ giữa hai run cho nguội")
     ap.add_argument("--out", default=str(ROOT / "bench/results/asr_streaming.md"))
     args = ap.parse_args()
+
+    # Phải xoá TRƯỚC khi import tritonclient: grpc đọc proxy lúc mở channel.
+    os.environ.clear()
+    os.environ.update(_env_no_proxy)
 
     read_counters = metrics_reader(args.container, args.metrics_url)
 

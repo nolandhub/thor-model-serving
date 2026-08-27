@@ -19,7 +19,13 @@ from bench.report import (  # noqa: E402
     pct,
     run_summary,
 )
-from bench.run_asr import markdown_table, metrics_reader, parse_ccus, throttled  # noqa: E402
+from bench.run_asr import (  # noqa: E402
+    markdown_table,
+    metrics_reader,
+    parse_ccus,
+    throttled,
+    without_proxy_env,
+)
 from bench.schedule import send_deadlines  # noqa: E402
 from bench.triton_metrics import counters_for_model, parse_exposition  # noqa: E402
 
@@ -409,3 +415,30 @@ def test_metrics_reader_dung_docker_exec_khi_chay_tren_host():
 def test_metrics_reader_khong_co_nguon_nao_bao_loi():
     with pytest.raises(ValueError, match="nguồn"):
         metrics_reader(None, None)
+
+
+# --- without_proxy_env: proxy công ty nướng sẵn trong image base -------------
+
+
+def test_without_proxy_env_bo_moi_bien_proxy():
+    # urllib VÀ grpc đều đọc http_proxy: để nguyên thì bench gọi proxy công ty
+    # chứ không gọi asr, và proxy refuse - đúng lỗi đã gặp trên Thor
+    env = {"http_proxy": "http://gw:8080", "HTTPS_PROXY": "http://gw:8080", "PATH": "/bin"}
+    assert without_proxy_env(env) == {"PATH": "/bin"}
+
+
+def test_without_proxy_env_bo_ca_no_proxy():
+    # no_proxy ở lại là vô nghĩa khi đã không còn proxy nào, mà lại dễ gây hiểu
+    # nhầm là bench có đi qua proxy trong vài trường hợp
+    assert without_proxy_env({"no_proxy": "localhost"}) == {}
+
+
+def test_without_proxy_env_khong_dung_bien_khac():
+    env = {"PATH": "/bin", "CUDA_VISIBLE_DEVICES": "0"}
+    assert without_proxy_env(env) == env
+
+
+def test_without_proxy_env_khong_sua_dict_goc():
+    env = {"http_proxy": "http://gw:8080"}
+    without_proxy_env(env)
+    assert env == {"http_proxy": "http://gw:8080"}

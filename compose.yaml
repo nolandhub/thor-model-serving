@@ -93,6 +93,17 @@ services:
       # rw vì bench ghi báo cáo ra bench/results/
       - .:/work
     working_dir: /work
+    # Image base có http_proxy của công ty nướng sẵn, mà urllib và grpc đều đọc
+    # nó: không xoá thì bench gửi request tới gateway thay vì tới asr và bị
+    # refuse. Xoá ở đây để mọi entrypoint (kể cả lệnh chẩn đoán gõ tay) đều
+    # sạch; run_asr.py còn xoá lần nữa trong tiến trình cho chắc.
+    environment:
+      http_proxy: ""
+      https_proxy: ""
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      all_proxy: ""
+      no_proxy: ""
     # Cổng nằm ở entrypoint chứ không ở command: `compose run` GHI ĐÈ command,
     # để cờ ở đó thì mọi lần truyền thêm tham số sẽ mất đường tới server.
     # 8002 không publish ra host, nhưng trong network này thì tới thẳng được.

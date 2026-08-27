@@ -80,6 +80,9 @@ def snapshot_http(url, model):
     thẳng endpoint chứ không hỏi Prometheus, vì chu kỳ scrape 15s dài hơn cả
     một run và hai snapshot sẽ rơi trúng cùng một điểm dữ liệu.
     """
-    with urllib.request.urlopen(url, timeout=5) as resp:
+    # opener KHÔNG proxy: url này là tên service trong network compose, đi qua
+    # proxy công ty là chắc chắn refuse (xem without_proxy_env trong run_asr).
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(url, timeout=5) as resp:
         text = resp.read().decode()
     return counters_for_model(parse_exposition(text), model)
