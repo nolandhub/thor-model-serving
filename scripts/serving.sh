@@ -54,7 +54,10 @@ cmd_up() {
 cmd_bench() {
   require_weights
   compose --profile asr up -d --wait
-  compose --profile bench run --rm bench "$@"
+  # PHẢI kèm --profile asr: depends_on chỉ trỏ được tới service đang nằm trong
+  # tập profile bật. Chỉ bật bench thì compose coi asr là service không tồn tại
+  # và bỏ luôn project ("depends on undefined service").
+  compose --profile asr --profile bench run --rm bench "$@"
 }
 
 cmd_down() { compose --profile asr --profile monitoring down "$@"; }
