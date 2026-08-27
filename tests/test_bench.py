@@ -19,6 +19,7 @@ from bench.report import (  # noqa: E402
     pct,
     run_summary,
 )
+from bench.run_asr import markdown_table, metrics_reader, parse_ccus, throttled  # noqa: E402
 from bench.schedule import send_deadlines  # noqa: E402
 from bench.triton_metrics import counters_for_model, parse_exposition  # noqa: E402
 
@@ -324,3 +325,87 @@ def test_aggregate_khong_con_run_hop_le_nao_bao_loi():
 def test_aggregate_tach_theo_tung_muc_ccu():
     runs = [_record(ccu=1), _record(ccu=8)]
     assert sorted(aggregate(runs)) == [1, 8]
+
+
+# --- parse_ccus: dải tải từ dòng lệnh ---------------------------------------
+
+
+def test_parse_ccus_doc_danh_sach_ngan_cach_bang_phay():
+    assert parse_ccus("1,2,4,8") == [1, 2, 4, 8]
+
+
+def test_parse_ccus_sap_xep_tang_dan():
+    # max_ccu_within_budget quét từ dưới lên, nên thứ tự chạy phải tăng dần
+    assert parse_ccus("8,1,4") == [1, 4, 8]
+
+
+def test_parse_ccus_bo_muc_trung_lap():
+    assert parse_ccus("1,1,2") == [1, 2]
+
+
+def test_parse_ccus_khong_duong_bao_loi():
+    with pytest.raises(ValueError, match="0"):
+        parse_ccus("1,0,2")
+
+
+def test_parse_ccus_khong_phai_so_bao_loi():
+    with pytest.raises(ValueError):
+        parse_ccus("1,x")
+
+
+# --- throttled: bẫy nhiệt, số sai 2-3 lần nếu bỏ qua ------------------------
+
+
+def test_throttled_gpuidle_khong_phai_bi_ham():
+    assert throttled("0x0000000000000001") is False
+
+
+def test_throttled_khong_co_ly_do_nao_la_binh_thuong():
+    assert throttled("0x0000000000000000") is False
+
+
+def test_throttled_co_ly_do_khac_la_dang_bi_ham():
+    # 0x...0004 = SwPowerCap, clock tụt và mọi số đo sau đó đều sai
+    assert throttled("0x0000000000000004") is True
+
+
+def test_throttled_khong_doc_duoc_thi_coi_nhu_khong_ham():
+    # Jetson/Thor có thể không xuất trường này - không được vì thế mà loại sạch run
+    assert throttled("[N/A]") is False
+    assert throttled("") is False
+
+
+# --- markdown_table: bảng kết quả -------------------------------------------
+
+
+def test_markdown_table_mot_dong_moi_muc_ccu():
+    agg = {
+        1: {"p99_latency_s": 0.12, "final_drift_s": 0.01, "avg_batch": 1.0,
+            "bls_tax": 0.5, "queue_us_per_request": 20.0},
+        4: {"p99_latency_s": 0.40, "final_drift_s": 0.30, "avg_batch": 2.5,
+            "bls_tax": 0.6, "queue_us_per_request": 90.0},
+    }
+    rows = [line for line in markdown_table(agg).splitlines() if line.startswith("| ")]
+    assert len(rows) == 3          # header + 2 mức CCU
+    assert rows[1].startswith("| 1 ")
+    assert rows[2].startswith("| 4 ")
+
+
+# --- metrics_reader: chọn nguồn counter theo chỗ bench đang đứng -------------
+
+
+def test_metrics_reader_uu_tien_url_khi_chay_trong_container():
+    # Trong network compose thì gọi thẳng asr:8002 - container không có docker socket
+    reader = metrics_reader("thor-asr-triton", "http://asr:8002/metrics")
+    assert "http://asr:8002/metrics" in repr(reader)
+
+
+def test_metrics_reader_dung_docker_exec_khi_chay_tren_host():
+    # Trên host thì 8002 KHÔNG publish ra ngoài, phải đọc từ bên trong container
+    reader = metrics_reader("thor-asr-triton", None)
+    assert "thor-asr-triton" in repr(reader)
+
+
+def test_metrics_reader_khong_co_nguon_nao_bao_loi():
+    with pytest.raises(ValueError, match="nguồn"):
+        metrics_reader(None, None)

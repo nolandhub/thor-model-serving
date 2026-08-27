@@ -68,6 +68,43 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  bench:
+    profiles: [bench]
+    # Dùng LẠI image ASR, không build image riêng: nó đã có tritonclient, numpy,
+    # soundfile. Image riêng cho bench là một thứ nữa phải giữ đồng bộ, mà Thor
+    # không ra được internet nên mỗi image mới là một lần rsync tay.
+    image: thor-voice-serving-asr:${IMAGE_TAG}
+    # Không đặt container_name: `compose run` tự sinh tên cho mỗi lần chạy,
+    # tên cố định sẽ đụng nhau nếu lỡ chạy hai bench chồng lên.
+    depends_on:
+      asr:
+        condition: service_healthy
+    # nvidia-smi để kiểm throttle nhiệt giữa hai run. Không reserve GPU thì
+    # trong container không có nvidia-smi, bench mất luôn cái chốt đó và sẽ
+    # báo cáo số đo lúc clock đang bị hãm như thể là số thật.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, utility]
+    volumes:
+      # rw vì bench ghi báo cáo ra bench/results/
+      - .:/work
+    working_dir: /work
+    # Cổng nằm ở entrypoint chứ không ở command: `compose run` GHI ĐÈ command,
+    # để cờ ở đó thì mọi lần truyền thêm tham số sẽ mất đường tới server.
+    # 8002 không publish ra host, nhưng trong network này thì tới thẳng được.
+    entrypoint:
+      - python3
+      - bench/run_asr.py
+      - --url
+      - asr:8001
+      - --metrics-url
+      - http://asr:8002/metrics
+    logging: *logging
+
   prometheus:
     profiles: [monitoring]
     # :latest chứ không ghim version: registry-1.docker.io bị chặn từ Thor,

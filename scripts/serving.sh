@@ -48,6 +48,15 @@ cmd_up() {
   cmd_health
 }
 
+# Bench chạy TRONG network compose để tới được asr:8002 (metrics cố ý không
+# publish ra host). --rm vì đây là tiến trình chạy một lần rồi thôi, không phải
+# container thường trú - để lại thì lần sau `up` sẽ vướng tên trùng.
+cmd_bench() {
+  require_weights
+  compose --profile asr up -d --wait
+  compose --profile bench run --rm bench "$@"
+}
+
 cmd_down() { compose --profile asr --profile monitoring down "$@"; }
 
 cmd_logs() { compose --profile asr --profile monitoring logs -f "$@"; }
@@ -104,6 +113,8 @@ Usage: ./scripts/serving.sh <command>
   down [-v]             stop the stack; -v also removes prometheus/grafana volumes
   logs [service]        follow logs; no argument follows all
   health                probe each endpoint and the prometheus scrape target
+  bench [args]          run the ASR bench inside the compose network
+                        (e.g. bench --ccu 1,2 --runs 1)
   help                  this message
 
 Parity test is separate (needs Python): ./tests/test_parity.sh
@@ -114,6 +125,6 @@ cmd="${1:-help}"
 [ $# -gt 0 ] && shift
 
 case "$cmd" in
-  build|up|down|logs|health|help) "cmd_$cmd" "$@" ;;
+  build|up|down|logs|health|bench|help) "cmd_$cmd" "$@" ;;
   *) echo "error: unknown command '$cmd'" >&2; echo >&2; cmd_help >&2; exit 1 ;;
 esac

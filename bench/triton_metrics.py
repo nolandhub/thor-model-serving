@@ -3,6 +3,7 @@
 
 import re
 import subprocess
+import urllib.request
 
 # name{k="v",k2="v2"} 1.234e+06   - phần {...} có thể không có
 _LINE = re.compile(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(.*)\})?\s+(\S+)$')
@@ -68,4 +69,17 @@ def snapshot(container, model, port=8002):
         ["docker", "exec", container, "python3", "-c", script],
         check=True, capture_output=True, text=True,
     ).stdout
+    return counters_for_model(parse_exposition(text), model)
+
+
+def snapshot_http(url, model):
+    """Chụp counter qua HTTP - dùng khi bench chạy TRONG network của compose.
+
+    Từ trong network thì asr:8002 tới thẳng được, không cần publish ra host và
+    cũng không có docker socket để mà exec. Cùng lý do với snapshot(): đọc
+    thẳng endpoint chứ không hỏi Prometheus, vì chu kỳ scrape 15s dài hơn cả
+    một run và hai snapshot sẽ rơi trúng cùng một điểm dữ liệu.
+    """
+    with urllib.request.urlopen(url, timeout=5) as resp:
+        text = resp.read().decode()
     return counters_for_model(parse_exposition(text), model)
