@@ -658,7 +658,6 @@
     {
       "type": "timeseries",
       "title": "Memory (unified CPU+GPU)",
-      "description": "Thor dùng LPDDR chung cho CPU và GPU - không có VRAM rời, nên NVML không có \"GPU memory\" để báo và nv_gpu_memory_* không tồn tại. Nguồn ở đây là node-exporter: trên máy này bộ nhớ GPU tiêu CHÍNH LÀ RAM hệ thống. Muốn tách phần GPU map riêng thì xem /sys/kernel/debug/nvmap/iovmm/clients.",
       "id": 18,
       "datasource": {
         "type": "prometheus",
@@ -686,7 +685,8 @@
           "refId": "A",
           "legendFormat": "used"
         }
-      ]
+      ],
+      "description": "Thor dùng LPDDR chung cho CPU và GPU - không có VRAM rời, nên NVML không có \"GPU memory\" để báo và nv_gpu_memory_* không tồn tại. Nguồn ở đây là node-exporter: bộ nhớ GPU tiêu CHÍNH LÀ RAM hệ thống, nên số này là 'máy còn bao nhiêu chỗ', KHÔNG tách riêng được phần GPU. Muốn tách theo tiến trình thì đọc /sys/kernel/debug/nvmap/iovmm/clients."
     },
     {
       "type": "timeseries",

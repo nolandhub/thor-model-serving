@@ -99,9 +99,15 @@ def test_env_example_co_du_bien_compose_dung():
 
 
 def test_metrics_8002_khong_publish_ra_host():
-    text = COMPOSE.read_text()
-    assert ":8002" not in re.sub(r"#.*", "", text), (
-        "cổng metrics 8002 không được publish ra host - chỉ prometheus trong network gọi"
+    # Chỉ soi các ánh xạ cổng thật (dòng trong `ports:` dạng "addr:host:container"),
+    # không soi cả file: bench gọi http://asr:8002/metrics TRONG network compose,
+    # đó là dùng đúng cách chứ không phải publish ra host.
+    text = re.sub(r"#.*", "", COMPOSE.read_text())
+    mappings = re.findall(r'^\s*-\s*"([^"]*:[^"]*)"', text, re.MULTILINE)
+    published = [m for m in mappings if m.rsplit(":", 1)[-1] == "8002"]
+    assert not published, (
+        f"cổng metrics 8002 không được publish ra host: {published} - "
+        "chỉ prometheus và bench trong network gọi"
     )
 
 

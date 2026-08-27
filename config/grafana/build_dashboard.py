@@ -295,10 +295,20 @@ SERVER_ROWS = [
         [
             ("GPU utilization", [("nv_gpu_utilization * 100", "GPU {{gpu_uuid}}")],
              "percent"),
-            ("GPU memory",
-             [("nv_gpu_memory_used_bytes / nv_gpu_memory_total_bytes * 100",
-               "GPU {{gpu_uuid}}")],
-             "percent"),
+            # Thor dùng LPDDR chung cho CPU và GPU: không có VRAM rời, NVML
+            # không có "GPU memory" để báo và nv_gpu_memory_* không tồn tại -
+            # panel cũ query nó nên vĩnh viễn No data. Nguồn thay thế là
+            # node-exporter, vì trên máy này bộ nhớ GPU tiêu CHÍNH LÀ RAM.
+            ("Memory (unified CPU+GPU)",
+             [("(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes)"
+               " / node_memory_MemTotal_bytes * 100", "used")],
+             "percent",
+             {"desc": "Thor dùng LPDDR chung cho CPU và GPU - không có VRAM rời, nên "
+                      "NVML không có \"GPU memory\" để báo và nv_gpu_memory_* không tồn "
+                      "tại. Nguồn ở đây là node-exporter: bộ nhớ GPU tiêu CHÍNH LÀ RAM hệ "
+                      "thống, nên số này là 'máy còn bao nhiêu chỗ', KHÔNG tách riêng được "
+                      "phần GPU. Muốn tách theo tiến trình thì đọc "
+                      "/sys/kernel/debug/nvmap/iovmm/clients."}),
             # Không vẽ nv_gpu_power_limit kèm: trên 3050 Laptop này DCGM đọc
             # được 0 W (nvidia-smi cũng trả power.limit [N/A], chỉ có
             # enforced.power.limit 60 W). Một đường thẳng 0 W không nói gì mà
@@ -322,7 +332,7 @@ LEGEND = "{{model}}{{instance}}{{quantile}}"
 def _panel(spec, pid: int, x: int, y: int, h: int) -> dict:
     """Một ô. spec là (title, exprs, unit) hoặc (title, exprs, unit, opts).
 
-    opts nhận: type (mặc định timeseries), h, stack, thresholds.
+    opts nhận: type (mặc định timeseries), h, stack, thresholds, desc.
     """
     title, exprs, unit = spec[:3]
     opts = spec[3] if len(spec) > 3 else {}
@@ -353,6 +363,8 @@ def _panel(spec, pid: int, x: int, y: int, h: int) -> dict:
         "fieldConfig": {"defaults": defaults, "overrides": []},
         "targets": targets,
     }
+    if opts.get("desc"):
+        panel["description"] = opts["desc"]
     if panel["type"] == "stat":
         # Không khai thì Grafana tự chọn calc, đổi giữa các bản. Chốt lại.
         panel["options"] = {
