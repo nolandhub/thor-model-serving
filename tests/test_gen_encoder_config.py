@@ -89,3 +89,10 @@ def test_render_config_dung_oldest_de_gom_nhieu_sequence():
     # vào một batch - direct thì mỗi sequence một slot riêng, avg_batch mãi 1.0
     assert "oldest" in _cfg()
     assert "max_candidate_sequences: 8" in _cfg()
+
+
+def test_triton_dims_rong_bao_loi():
+    # shape ['N'] -> bỏ chiều batch còn rỗng. Triton từ chối dims: [ ] nhưng
+    # thông báo lỗi của nó không chỉ ra state nào - phải hỏng ở đây.
+    with pytest.raises(ValueError, match="rỗng"):
+        triton_dims(["N"], 0)

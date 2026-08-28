@@ -49,6 +49,11 @@ def triton_dims(shape, batch_ax):
         if isinstance(dim, str):
             raise ValueError(f"shape {shape} còn chiều động {dim!r} ngoài batch")
         dims.append(dim)
+    if not dims:
+        raise ValueError(
+            f"shape {shape} bỏ chiều batch xong còn rỗng - Triton không nhận "
+            "dims: [ ]. Nống thêm một chiều lúc bọc (xem scripts/wrap_encoder.py)"
+        )
     return dims
 
 
