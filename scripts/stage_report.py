@@ -2,6 +2,7 @@
 # ABOUTME: Chạy: docker compose ... run --rm --entrypoint python3 bench scripts/stage_report.py
 
 import argparse
+import json
 import sys
 import urllib.request
 from pathlib import Path
@@ -13,6 +14,32 @@ from bench.triton_metrics import parse_exposition, stage_breakdown  # noqa: E402
 
 # Bọc trọn _handle nên nó CHỨA ba tầng kia - không nằm cùng hàng trong bảng.
 WRAPPER = "chunk"
+
+
+def subtract(before, after):
+    """Phần chênh giữa hai mốc -> phân rã của RIÊNG quãng giữa hai lần chụp.
+
+    Histogram của Triton cộng dồn từ lúc khởi động, nên chụp một lần là được
+    trung bình của mọi thứ đã chạy - kể cả warmup và các mức CCU trước. Trừ
+    hai mốc rẻ hơn nhiều so với restart giữa mỗi vòng đo (25s + warmup lại),
+    và giữ được số của vòng trước để đối chiếu.
+    """
+    out = {}
+    for stage, a in after.items():
+        b = before.get(stage, {"count": 0.0, "sum_s": 0.0})
+        count = a["count"] - b["count"]
+        sum_s = a["sum_s"] - b["sum_s"]
+        if count < 0 or sum_s < 0:
+            raise ValueError(
+                f"counter tầng {stage!r} giảm giữa hai mốc - Triton đã restart, "
+                "chụp lại mốc đầu"
+            )
+        out[stage] = {
+            "count": count,
+            "sum_s": sum_s,
+            "mean_ms": (sum_s / count * 1000) if count else 0.0,
+        }
+    return out
 
 
 def render(bd):
@@ -62,13 +89,23 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--metrics-url", default="http://asr:8002/metrics")
     ap.add_argument("--model", default="asr_streaming_prof")
+    ap.add_argument("--save", help="ghi mốc ra file JSON để lần sau trừ")
+    ap.add_argument("--since", help="file mốc trước - in phân rã của RIÊNG quãng từ đó tới giờ")
     args = ap.parse_args()
 
     # opener KHÔNG proxy, cùng lý do đã ghi ở bench/triton_metrics.snapshot_http
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     with opener.open(args.metrics_url, timeout=5) as resp:
         text = resp.read().decode()
-    print(render(stage_breakdown(parse_exposition(text), args.model)))
+    bd = stage_breakdown(parse_exposition(text), args.model)
+    if args.save:
+        Path(args.save).write_text(json.dumps(bd))
+        print(f"đã ghi mốc -> {args.save}")
+    if args.since:
+        before = json.loads(Path(args.since).read_text())
+        print(render(subtract(before, bd)))
+    else:
+        print(render(bd))
 
 
 if __name__ == "__main__":

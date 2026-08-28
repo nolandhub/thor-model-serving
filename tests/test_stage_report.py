@@ -45,3 +45,32 @@ def test_sap_xep_theo_tong_khong_theo_mean():
 def test_thieu_chunk_bao_loi():
     with pytest.raises(ValueError, match="chunk"):
         render({"fbank": _st(1.0, 1)})
+
+
+# --- subtract: đo một lần chạy mà không cần restart Triton --------------------
+# Histogram của Triton cộng dồn từ lúc khởi động. Restart giữa mỗi vòng đo vừa
+# chậm (25s + warmup lại) vừa làm mất luôn số của vòng trước để đối chiếu.
+
+
+def test_subtract_ra_dung_phan_chenh():
+    from scripts.stage_report import subtract
+    before = {"chunk": _st(10.0, 100), "encoder": _st(8.0, 60)}
+    after = {"chunk": _st(12.0, 120), "encoder": _st(9.6, 72)}
+    d = subtract(before, after)
+    assert d["chunk"]["count"] == 20
+    assert d["chunk"]["sum_s"] == pytest.approx(2.0)
+    assert d["encoder"]["mean_ms"] == pytest.approx(1600 / 12)
+
+
+def test_subtract_tang_moi_xuat_hien_sau_moc_dau():
+    from scripts.stage_report import subtract
+    d = subtract({"chunk": _st(1.0, 10)}, {"chunk": _st(2.0, 20), "greedy": _st(0.5, 10)})
+    assert d["greedy"]["count"] == 10
+
+
+def test_subtract_counter_giam_la_da_restart():
+    # Counter chỉ tăng. Giảm nghĩa là Triton đã restart giữa hai mốc, và phép
+    # trừ ra số âm vô nghĩa - phải hỏng ở đây chứ không phải in ra bảng sai.
+    from scripts.stage_report import subtract
+    with pytest.raises(ValueError, match="restart"):
+        subtract({"chunk": _st(10.0, 100)}, {"chunk": _st(1.0, 10)})
