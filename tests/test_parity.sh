@@ -10,6 +10,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GRPC_PORT="${ASR_GRPC_PORT:-4001}"
 ADDR="${BIND_ADDR:-127.0.0.1}"
 
+# Đường nào cũng phải ra ĐÚNG một transcript - nhanh hơn mà sai chữ thì
+# không phải cải tiến. ASR_MODEL=asr_streaming_bls để kiểm đường BLS.
+MODEL="${ASR_MODEL:-asr_streaming}"
+
 EXPECTED="ANH CÓ THÍCH TÔI GIỮ TRƯỚC QUYỂN SÁCH NÀY CHO ANH KHÔNG"
 
 python3 -c 'import tritonclient.grpc' 2>/dev/null || {
@@ -18,14 +22,14 @@ python3 -c 'import tritonclient.grpc' 2>/dev/null || {
   exit 1
 }
 
-echo "streaming tests/assets/sample_vi.wav to $ADDR:$GRPC_PORT ..."
+echo "streaming tests/assets/sample_vi.wav to $ADDR:$GRPC_PORT (model: $MODEL) ..."
 
 # Chạy tách khỏi pipeline. Gộp `python3 ... 2>&1 | tail -1` vào một lệnh gán là
 # tự bịt miệng mình: pipefail cho pipeline trả mã lỗi, set -e giết script ngay
 # tại dòng gán, mà stderr thì đã bị nuốt vào pipe nên không in ra gì hết.
 set +e
 RAW="$(python3 "$ROOT/client/asr_streaming_client.py" \
-  --url "$ADDR:$GRPC_PORT" --fast \
+  --url "$ADDR:$GRPC_PORT" --model "$MODEL" --fast \
   "$ROOT/tests/assets/sample_vi.wav" 2>&1)"
 RC=$?
 set -e

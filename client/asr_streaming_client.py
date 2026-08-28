@@ -41,6 +41,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("wav", help="file wav, tần số nào cũng được - tự hạ về 16kHz")
     ap.add_argument("--url", default="localhost:8001")
+    ap.add_argument("--model", default="asr_streaming",
+                    help="asr_streaming | asr_streaming_bls")
     ap.add_argument("--chunk-ms", type=int, default=200)
     ap.add_argument("--fast", action="store_true", help="gửi dồn, không ngủ giữa các chunk")
     args = ap.parse_args()
@@ -60,7 +62,7 @@ def main():
         inp = grpcclient.InferInput("AUDIO_CHUNK", [1, len(part)], "FP32")
         inp.set_data_from_numpy(part.reshape(1, -1))
         client.async_stream_infer(
-            "asr_streaming",
+            args.model,
             [inp],
             sequence_id=seq_id,
             sequence_start=(i == 0),

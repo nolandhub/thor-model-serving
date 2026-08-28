@@ -96,3 +96,21 @@ def test_triton_dims_rong_bao_loi():
     # thông báo lỗi của nó không chỉ ra state nào - phải hỏng ở đây.
     with pytest.raises(ValueError, match="rỗng"):
         triton_dims(["N"], 0)
+
+
+def test_render_config_khai_max_queue_delay():
+    # Không chờ thì không có batch: mỗi stream chỉ gọi encoder ~320ms một lần
+    # (decode_chunk_len=32), nên xác suất hai request rơi cùng cửa sổ là thấp
+    # nếu cửa sổ bằng 0. Đây là tham số phải quét, không đoán được.
+    cfg = render_config(
+        name="encoder", x_name="x", x_dims=[45, 80], x_type="TYPE_FP32",
+        states=[{"input_name": "c_in", "output_name": "c_out",
+                 "data_type": "TYPE_FP32", "dims": [2, 512]}],
+        max_batch=8, max_candidate=8, max_queue_delay=10000,
+    )
+    assert "max_queue_delay_microseconds: 10000" in cfg
+
+
+def test_max_queue_delay_co_mac_dinh():
+    # Mọi test đã viết ở trên gọi render_config KHÔNG truyền tham số này.
+    assert "max_queue_delay_microseconds: 0" in _cfg()

@@ -57,7 +57,8 @@ def triton_dims(shape, batch_ax):
     return dims
 
 
-def render_config(name, x_name, x_dims, x_type, states, max_batch, max_candidate):
+def render_config(name, x_name, x_dims, x_type, states, max_batch, max_candidate,
+                  max_queue_delay=0):
     """Dựng nội dung config.pbtxt. Thuần chuỗi, không đọc file nào."""
     blocks = []
     for s in states:
@@ -107,6 +108,7 @@ sequence_batching {{
   # mãi là 1.0 và toàn bộ lý do tồn tại của model này biến mất.
   oldest {{
     max_candidate_sequences: {max_candidate}
+    max_queue_delay_microseconds: {max_queue_delay}
   }}
   state [
 {states_str}
@@ -128,6 +130,8 @@ def main():
     ap.add_argument("--name", default="encoder")
     ap.add_argument("--max-batch", type=int, default=8)
     ap.add_argument("--max-candidate", type=int, default=8)
+    ap.add_argument("--max-queue-delay", type=int, default=0,
+                    help="µs chờ gom batch - tham số phải QUÉT, xem spec §6")
     args = ap.parse_args()
 
     import onnxruntime as ort
@@ -157,6 +161,7 @@ def main():
         states=states,
         max_batch=args.max_batch,
         max_candidate=args.max_candidate,
+        max_queue_delay=args.max_queue_delay,
     ), end="")
 
 
