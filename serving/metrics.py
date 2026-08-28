@@ -84,3 +84,63 @@ class ModelMetrics:
         """
         self._ccu.set(n)
         self._ccu_at.set(time.time())
+
+
+# Thang thời gian một tầng, giây. Trải rộng vì ba tầng lệch nhau hàng bậc:
+# fbank quanh 1ms, encoder 18ms, greedy chưa biết - đó đúng là thứ đi đo.
+STAGE_BUCKETS = [0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2]
+
+
+class StageMetrics:
+    """Phân rã thời gian một chunk theo tầng: fbank / encoder / greedy.
+
+    Vì sao HISTOGRAM chứ không GAUGE: cần TỔNG thời gian mỗi tầng cộng dồn qua
+    mọi request để chia ra tỷ trọng. GAUGE chỉ giữ giá trị lần cuối, và với
+    nhiều instance thì instance nào ghi sau thắng - không cộng lại được.
+
+    Danh sách tầng đặt trước ở __init__ chứ không tạo lazy lúc observe: tạo
+    Metric giữa lúc chạy làm lần đo đầu của mỗi tầng đắt hơn hẳn phần còn lại,
+    mà đây lại đúng là công cụ đang đi tìm xem thời gian nằm ở đâu.
+    """
+
+    def __init__(self, metric_api, model: str, stages):
+        family = metric_api.MetricFamily
+        # Giữ family làm thuộc tính vì lý do đã ghi ở ModelMetrics: family bị
+        # GC trước Metric thì metric chết im lặng lúc chạy thật.
+        self._family = family(
+            name="voice_stage_seconds",
+            description="Thời gian mỗi tầng xử lý trong một chunk",
+            kind=family.HISTOGRAM,
+        )
+        self._stages = {
+            s: self._family.Metric(
+                labels={"model": model, "stage": s}, buckets=list(STAGE_BUCKETS)
+            )
+            for s in stages
+        }
+
+    def observe(self, stage: str, seconds: float) -> None:
+        self._stages[stage].observe(seconds)
+
+    def time(self, stage: str):
+        """Context manager: `with m.time("encoder"): ...`"""
+        return _StageTimer(self, stage)
+
+
+class _StageTimer:
+    __slots__ = ("_m", "_stage", "_t0")
+
+    def __init__(self, metrics: StageMetrics, stage: str):
+        # Tra tầng NGAY, không đợi __exit__: gõ sai tên tầng thì phải hỏng ở
+        # chỗ viết sai, chứ không phải sau khi đã chạy xong cả khối bên trong.
+        metrics._stages[stage]
+        self._m = metrics
+        self._stage = stage
+
+    def __enter__(self):
+        self._t0 = time.perf_counter()
+        return self
+
+    def __exit__(self, *exc):
+        self._m.observe(self._stage, time.perf_counter() - self._t0)
+        return False

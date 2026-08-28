@@ -1,0 +1,51 @@
+name: "asr_streaming_prof"
+backend: "python"
+max_batch_size: 8
+
+input [
+  {
+    name: "AUDIO_CHUNK"
+    data_type: TYPE_FP32
+    dims: [-1]
+  }
+]
+
+output [
+  {
+    name: "TRANSCRIPT"
+    data_type: TYPE_STRING
+    dims: [1]
+  }
+]
+
+sequence_batching {
+  max_sequence_idle_microseconds: 60000000
+  oldest {
+    max_candidate_sequences: 8
+  }
+  control_input [
+    {
+      name: "START"
+      control [ { kind: CONTROL_SEQUENCE_START fp32_false_true: [0, 1] } ]
+    },
+    {
+      name: "END"
+      control [ { kind: CONTROL_SEQUENCE_END fp32_false_true: [0, 1] } ]
+    },
+    {
+      name: "READY"
+      control [ { kind: CONTROL_SEQUENCE_READY fp32_false_true: [0, 1] } ]
+    },
+    {
+      name: "CORRID"
+      control [ { kind: CONTROL_SEQUENCE_CORRID data_type: TYPE_UINT64 } ]
+    }
+  ]
+}
+
+instance_group [
+  {
+    kind: KIND_GPU
+    count: 4
+  }
+]

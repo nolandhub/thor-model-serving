@@ -86,3 +86,42 @@ def snapshot_http(url, model):
     with opener.open(url, timeout=5) as resp:
         text = resp.read().decode()
     return counters_for_model(parse_exposition(text), model)
+
+
+def stage_breakdown(samples, model):
+    """Phân rã thời gian theo tầng -> {stage: {count, sum_s, mean_ms, share}}.
+
+    counters_for_model() không dùng được ở đây: nó gộp theo TÊN metric, mà cả
+    ba tầng dùng chung tên voice_stage_seconds_sum và chỉ khác nhau ở label
+    stage - gộp theo tên là cả ba dồn vào một số duy nhất.
+
+    share tính trên tổng sum của các tầng, không phải trên wall-clock của
+    chunk. Ba tầng cộng lại có thể KHÔNG bằng 100% thời gian một chunk - phần
+    thiếu chính là overhead ngoài tầng (Triton, serialize, python), và đó mới
+    là con số cần nhìn.
+    """
+    acc = {}
+    for name, labels, value in samples:
+        if labels.get("model") != model:
+            continue
+        stage = labels.get("stage")
+        if stage is None:
+            continue
+        if name.endswith("_sum"):
+            key = "sum_s"
+        elif name.endswith("_count"):
+            key = "count"
+        else:
+            continue   # _bucket: không cần cho bảng phân rã
+        slot = acc.setdefault(stage, {"count": 0.0, "sum_s": 0.0})
+        slot[key] += value
+    if not acc:
+        raise ValueError(
+            f"không có mẫu voice_stage_seconds nào cho model {model!r} - "
+            "kiểm tên model và xem model đã chạy request nào chưa"
+        )
+    total = sum(s["sum_s"] for s in acc.values())
+    for s in acc.values():
+        s["mean_ms"] = (s["sum_s"] / s["count"] * 1000) if s["count"] else 0.0
+        s["share"] = (s["sum_s"] / total) if total else 0.0
+    return acc

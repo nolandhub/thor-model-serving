@@ -22,7 +22,6 @@ from bench.report import aggregate, max_ccu_within_budget, run_summary  # noqa: 
 from bench.schedule import send_deadlines  # noqa: E402
 from bench.triton_metrics import snapshot, snapshot_http  # noqa: E402
 
-MODEL = "asr_streaming"
 # Clock GPC của Tegra. nvidia-smi trên Thor trả [N/A] cho clocks.sm và cho cả
 # clocks_throttle_reasons (NVML không xuất hai thứ đó cho iGPU), còn
 # /sys/class/thermal thì rỗng - không có cooling device nào để hỏi "có đang bị
@@ -201,7 +200,7 @@ def gpu_state():
     return out, throttled(out.split(",")[-1])
 
 
-def _run_stream(url, chunks, chunk_s, t_start, seq_id, out, errors):
+def _run_stream(url, model, chunks, chunk_s, t_start, seq_id, out, errors):
     """Một stream: gửi chunk theo mốc tuyệt đối, ghi lại thời điểm gửi và nhận.
 
     Mỗi stream một connection riêng: dùng chung một InferenceServerClient thì
@@ -225,7 +224,7 @@ def _run_stream(url, chunks, chunk_s, t_start, seq_id, out, errors):
             inp.set_data_from_numpy(part.reshape(1, -1))
             out["send"].append(time.monotonic())
             client.async_stream_infer(
-                MODEL, [inp], sequence_id=seq_id,
+                model, [inp], sequence_id=seq_id,
                 sequence_start=(i == 0), sequence_end=(i == len(chunks) - 1),
             )
         while len(out["recv"]) < len(chunks):
@@ -253,14 +252,15 @@ def warmup(args, chunks):
     print(f"  warmup {len(part)} chunk (kết quả bỏ)")
     stream = {"t_start": time.monotonic(), "send": [], "recv": []}
     errors = []
-    _run_stream(args.url, part, 0.0, time.monotonic(), int(time.time()) % 2**28 * 16, stream, errors)
+    _run_stream(args.url, args.model, part, 0.0, time.monotonic(),
+                int(time.time()) % 2**28 * 16, stream, errors)
     if errors:
         raise errors[0]
 
 
 def run_once(args, read_counters, ccu, chunks, run_idx):
     """Một run ở một mức CCU -> record đúng dạng report.run_summary() nhận."""
-    before = read_counters(MODEL)
+    before = read_counters(args.model)
     gpu_before, hot_before = gpu_state()
 
     # Mọi stream chung một t_start: chúng phải chồng lấn thật thì dynamic
@@ -274,7 +274,7 @@ def run_once(args, read_counters, ccu, chunks, run_idx):
     threads = [
         threading.Thread(
             target=_run_stream,
-            args=(args.url, chunks, args.chunk_ms / 1000, t_start,
+            args=(args.url, args.model, chunks, args.chunk_ms / 1000, t_start,
                   base_seq + i + 1, streams[i], errors),
         )
         for i in range(ccu)
@@ -287,7 +287,7 @@ def run_once(args, read_counters, ccu, chunks, run_idx):
     if errors:
         raise errors[0]
 
-    after = read_counters(MODEL)
+    after = read_counters(args.model)
     gpu_after, hot_after = gpu_state()
     valid = not (hot_before or hot_after)
     if not valid:
@@ -314,6 +314,8 @@ def main():
     _env_no_proxy = without_proxy_env(os.environ)
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="localhost:8001")
+    ap.add_argument("--model", default="asr_streaming",
+                    help="asr_streaming | asr_streaming_prof | asr_streaming_bls")
     ap.add_argument("--container", default="thor-asr-triton",
                     help="chạy trên host: đọc /metrics bằng docker exec vào container này")
     ap.add_argument("--metrics-url",
@@ -327,7 +329,8 @@ def main():
     # 25 chunk = 5s audio, gửi dồn nên chỉ tốn khoảng một giây. Đặt 0 để tắt
     # khi biết chắc server đã chạy nóng từ trước.
     ap.add_argument("--warmup-chunks", type=int, default=25, help="chunk chạy nóng, kết quả bỏ")
-    ap.add_argument("--config-url", help="vd http://asr:8000/v2/models/asr_streaming/config")
+    ap.add_argument("--config-url", help="gốc, vd http://asr:8000/v2/models "
+                    "- tên model và /config được ghép vào trong main()")
     # Mặc định = đúng độ dài một chunk: chậm hơn thế là trả kết quả không kịp
     # tốc độ audio vào, hàng đợi dồn vô hạn. Ngân sách rộng hơn sẽ báo "còn
     # trong ngưỡng" ở đúng mức tải mà drift đã cho thấy là đang sập.
@@ -352,7 +355,11 @@ def main():
     print(f"{len(chunks)} chunk x {args.chunk_ms}ms = {len(chunks) * args.chunk_ms / 1000:.1f}s "
           f"audio/stream | CCU {ccus} | {args.runs} run/mức")
 
-    cfg = fetch_model_config(args.config_url) if args.config_url else None
+    # Ghép tên model vào ở đây chứ không để người gọi truyền URL đầy đủ: đổi
+    # --model mà quên đổi --config-url thì bảng in ra cấu hình của model KHÁC,
+    # và không có gì trong output tố cáo điều đó.
+    cfg_url = f"{args.config_url.rstrip('/')}/{args.model}/config" if args.config_url else None
+    cfg = fetch_model_config(cfg_url) if cfg_url else None
     cfg_line = model_config_summary(cfg) if cfg else "cấu hình đang chạy: không đọc được"
     print(f"  {cfg_line}")
 
@@ -382,7 +389,7 @@ def main():
     )
     gpu, _ = gpu_state()
     body = (
-        f"# Bench `{MODEL}`\n\n"
+        f"# Bench `{args.model}`\n\n"
         f"{len(chunks) * args.chunk_ms / 1000:.1f}s audio/stream, chunk {args.chunk_ms}ms, "
         f"median của {args.runs} run. nvidia-smi lúc kết thúc: `{gpu}`.\n\n"
         f"Cấu hình Triton ĐANG CHẠY lúc đo: `{cfg_line}`. Đọc từ server chứ không "
