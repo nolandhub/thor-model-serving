@@ -18,31 +18,42 @@ WRAPPER = "chunk"
 def render(bd):
     """Bảng phân rã. Hàng cuối là phần KHÔNG nằm trong tầng nào.
 
-    Con số đáng nhìn nhất là hàng 'ngoài tầng': nó là overhead của Triton +
-    python + serialize. Nếu nó lớn thì tách model thành nhiều tầng sẽ nhân
-    overhead đó lên chứ không giảm đi, và cả hướng kiến trúc phải đổi.
+    Tỷ trọng tính bằng TỔNG thời gian, không phải mean/mean. Các tầng có số
+    lần gọi khác nhau: encoder tiêu thụ decode_chunk_len khung mỗi bước trong
+    khi một chunk chỉ nạp 20 khung, nên nó chạy ~0.6 lần mỗi chunk. Lấy mean
+    của tầng chia mean của chunk sẽ ra tỷ trọng vượt 100% và phần dư âm.
+
+    Cột "lần/chunk" giữ lại vì nó tự nói lên nhịp: <1 nghĩa là tầng đó không
+    chạy ở mọi chunk, và mean của nó không so thẳng với mean chunk được.
     """
     if WRAPPER not in bd:
         raise ValueError(f"thiếu tầng {WRAPPER!r} - model đo chưa chạy request nào?")
     chunk = bd[WRAPPER]
     inner = {k: v for k, v in bd.items() if k != WRAPPER}
-    inner_ms = sum(v["mean_ms"] for v in inner.values())
+    inner_sum = sum(v["sum_s"] for v in inner.values())
+    total_s = chunk["sum_s"]
+    n = chunk["count"]
+
+    def row(name, sum_s, mean_ms, per_chunk):
+        share = sum_s / total_s * 100 if total_s else 0.0
+        ms_per_chunk = sum_s / n * 1000 if n else 0.0
+        return (f"| {name} | {mean_ms:.2f} | {per_chunk} | "
+                f"{ms_per_chunk:.2f} | {share:.1f}% |")
 
     lines = [
-        f"chunk quan sát được: {chunk['count']:.0f}",
+        f"chunk quan sát được: {n:.0f}",
         "",
-        "| tầng | mean (ms) | % của chunk |",
-        "|---|---|---|",
+        "| tầng | mean/lần (ms) | lần/chunk | ms/chunk | % của chunk |",
+        "|---|---|---|---|---|",
     ]
-    for name, v in sorted(inner.items(), key=lambda kv: -kv[1]["mean_ms"]):
-        share = v["mean_ms"] / chunk["mean_ms"] * 100 if chunk["mean_ms"] else 0.0
-        lines.append(f"| {name} | {v['mean_ms']:.3f} | {share:.1f}% |")
+    for name, v in sorted(inner.items(), key=lambda kv: -kv[1]["sum_s"]):
+        per_chunk = f"{v['count'] / n:.2f}" if n else "-"
+        lines.append(row(name, v["sum_s"], v["mean_ms"], per_chunk))
 
-    out_ms = chunk["mean_ms"] - inner_ms
-    out_share = out_ms / chunk["mean_ms"] * 100 if chunk["mean_ms"] else 0.0
+    out_s = total_s - inner_sum
     lines += [
-        f"| **ngoài tầng** | **{out_ms:.3f}** | **{out_share:.1f}%** |",
-        f"| _chunk (tổng)_ | _{chunk['mean_ms']:.3f}_ | _100%_ |",
+        row("**ngoài tầng**", out_s, out_s / n * 1000 if n else 0.0, "-"),
+        row("_chunk (tổng)_", total_s, chunk["mean_ms"], "1.00"),
     ]
     return "\n".join(lines)
 
