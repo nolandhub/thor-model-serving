@@ -1,0 +1,10 @@
+{
+  "query": "Thủ đô của Việt Nam là thành phố nào?",
+  "texts": [
+    "Con mèo đang nằm ngủ trên chiếc ghế sofa màu xanh ở phòng khách.",
+    "Hà Nội là thủ đô của nước Cộng hòa Xã hội Chủ nghĩa Việt Nam.",
+    "Thành phố Hồ Chí Minh là trung tâm kinh tế lớn nhất của cả nước.",
+    "Paris là thủ đô của nước Pháp, nổi tiếng với tháp Eiffel."
+  ],
+  "raw_scores": false
+}
