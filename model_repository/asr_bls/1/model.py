@@ -76,10 +76,9 @@ class _Ctx:
 
 class TritonPythonModel:
     def initialize(self, args):
-        # Trọng số dùng chung với asr_streaming, không sao chép sang đây: khỏi
-        # nhân đôi trong git, và hai đường luôn chạy đúng một bộ số thì bảng so
-        # mới nói được điều gì.
-        d = os.path.join(args["model_repository"], "..", "asr_streaming", "1")
+        # Trọng số nằm ngay trong version dir của chính model này - asr_streaming
+        # (bản monolith cũ) đã bị xoá sau khi BLS trở thành kiến trúc chốt.
+        d = os.path.dirname(os.path.abspath(__file__))
 
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = ORT_INTRA_THREADS

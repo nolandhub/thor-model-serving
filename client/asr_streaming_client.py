@@ -47,8 +47,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("wav", help="file wav, tần số nào cũng được - tự hạ về 16kHz")
     ap.add_argument("--url", default="localhost:8001")
-    ap.add_argument("--model", default="asr_streaming",
-                    help="asr_streaming | asr_bls")
+    ap.add_argument("--model", default="asr_bls")
     ap.add_argument("--chunk-ms", type=int, default=DEFAULT_CHUNK_MS)
     ap.add_argument("--fast", action="store_true", help="gửi dồn, không ngủ giữa các chunk")
     ap.add_argument("--quiet", action="store_true", help="chỉ in transcript cuối")

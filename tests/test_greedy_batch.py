@@ -1,10 +1,16 @@
 # ABOUTME: Kiểm greedy_search_batch cho ra ĐÚNG token như greedy_search_step batch-1
 # ABOUTME: Dùng decoder/joiner giả, chạy được khi server tắt và không cần weights
 
+import sys
+from pathlib import Path
+
 import numpy as np
 import pytest
 
-from serving.streaming_search import (
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "model_repository" / "asr_bls" / "1"))
+
+from streaming_search import (  # noqa: E402
     SearchState,
     greedy_search_batch,
     greedy_search_step,

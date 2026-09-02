@@ -190,9 +190,9 @@ def test_chunk_wav_bo_phan_du_thay_vi_dem_im_lang():
 EXPOSITION = """\
 # HELP nv_inference_request_success Number of successful inference requests
 # TYPE nv_inference_request_success counter
-nv_inference_request_success{model="asr_streaming",version="1"} 1234
-nv_inference_exec_count{model="asr_streaming",version="1"} 617
-nv_inference_compute_infer_duration_us{model="asr_streaming",version="1"} 1.234e+06
+nv_inference_request_success{model="asr_bls",version="1"} 1234
+nv_inference_exec_count{model="asr_bls",version="1"} 617
+nv_inference_compute_infer_duration_us{model="asr_bls",version="1"} 1.234e+06
 nv_inference_exec_count{model="encoder",version="1"} 90
 
 # TYPE nv_gpu_utilization gauge
@@ -548,7 +548,7 @@ def test_warmup_slice_khong_duong_thi_bo_warmup():
 # số cũ trở lại y hệt. Hỏi thẳng server đang chạy gì là hết cửa nhầm.
 
 _CFG = {
-    "name": "asr_streaming",
+    "name": "asr_bls",
     "max_batch_size": 8,
     "instance_group": [{"count": 4, "kind": "KIND_GPU"}],
     "sequence_batching": {"oldest": {"max_candidate_sequences": 8}},
@@ -557,7 +557,7 @@ _CFG = {
 
 def test_model_config_summary_gom_du_bon_so_quyet_dinh():
     out = model_config_summary(_CFG)
-    assert "asr_streaming" in out
+    assert "asr_bls" in out
     assert "4 x KIND_GPU" in out
     assert "max_batch_size 8" in out
     assert "max_candidate_sequences 8" in out

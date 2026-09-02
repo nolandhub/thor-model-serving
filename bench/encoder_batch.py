@@ -109,7 +109,7 @@ def time_batch(session, batch, symbol, iters, warmup):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--encoder", default=str(ROOT / "model_repository/asr_streaming/1/encoder.onnx"))
+    ap.add_argument("--encoder", default=str(ROOT / "model_repository/asr_bls/1/encoder.onnx"))
     ap.add_argument("--batches", default="1,2,4,8")
     ap.add_argument("--iters", type=int, default=30)
     ap.add_argument("--warmup", type=int, default=5)

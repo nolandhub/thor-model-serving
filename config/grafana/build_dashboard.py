@@ -103,7 +103,7 @@ ROWS = [
             ),
         ],
     ),
-    ("ASR_STREAMING", triton_rows("asr_streaming")),
+    ("ASR_BLS", triton_rows("asr_bls")),
     ("TTS", triton_rows("tts")),
     (
         "LLM (vLLM)",
@@ -267,7 +267,7 @@ SERVER_ROWS = [
             ("Queue time trung bình", [stage_ms("queue")], "ms"),
             ("Queue depth", [("nv_inference_pending_request_count", "{{model}}")],
              "short"),
-            breakdown("asr_streaming"),
+            breakdown("asr_bls"),
             breakdown("tts"),
         ],
     ),

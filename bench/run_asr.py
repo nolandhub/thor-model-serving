@@ -1,4 +1,4 @@
-# ABOUTME: Driver bench asr_streaming - quét CCU, gửi chunk đúng nhịp realtime, chụp counter Triton
+# ABOUTME: Driver bench asr_bls - quét CCU, gửi chunk đúng nhịp realtime, chụp counter Triton
 # ABOUTME: Chạy: python bench/run_asr.py --ccu 1,2,4,8 (cần Thor đang up; hàm thuần thì không)
 
 import argparse
@@ -22,7 +22,12 @@ from bench.report import aggregate, max_ccu_within_budget, run_summary  # noqa: 
 from bench.schedule import send_deadlines  # noqa: E402
 from bench.triton_metrics import snapshot, snapshot_http  # noqa: E402
 
-MODEL = "asr_streaming"
+MODEL = "asr_bls"
+# avg_batch/bls_tax phải đọc counter của "encoder", không phải MODEL: batching
+# thật (sequence_batching.oldest) xảy ra ở encoder, asr_bls chỉ là orchestrator
+# KIND_CPU đứng trước nó. Đọc counter của asr_bls ở đây sẽ luôn ra avg_batch
+# ~1.0 và kết luận sai là BLS không gom được gì.
+ENCODER_MODEL = "encoder"
 # Clock GPC của Tegra. nvidia-smi trên Thor trả [N/A] cho clocks.sm và cho cả
 # clocks_throttle_reasons (NVML không xuất hai thứ đó cho iGPU), còn
 # /sys/class/thermal thì rỗng - không có cooling device nào để hỏi "có đang bị
@@ -260,7 +265,7 @@ def warmup(args, chunks):
 
 def run_once(args, read_counters, ccu, chunks, run_idx):
     """Một run ở một mức CCU -> record đúng dạng report.run_summary() nhận."""
-    before = read_counters(MODEL)
+    before = read_counters(ENCODER_MODEL)
     gpu_before, hot_before = gpu_state()
 
     # Mọi stream chung một t_start: chúng phải chồng lấn thật thì dynamic
@@ -287,7 +292,7 @@ def run_once(args, read_counters, ccu, chunks, run_idx):
     if errors:
         raise errors[0]
 
-    after = read_counters(MODEL)
+    after = read_counters(ENCODER_MODEL)
     gpu_after, hot_after = gpu_state()
     valid = not (hot_before or hot_after)
     if not valid:
@@ -327,13 +332,13 @@ def main():
     # 25 chunk = 5s audio, gửi dồn nên chỉ tốn khoảng một giây. Đặt 0 để tắt
     # khi biết chắc server đã chạy nóng từ trước.
     ap.add_argument("--warmup-chunks", type=int, default=25, help="chunk chạy nóng, kết quả bỏ")
-    ap.add_argument("--config-url", help="vd http://asr:8000/v2/models/asr_streaming/config")
+    ap.add_argument("--config-url", help="vd http://asr:8000/v2/models/asr_bls/config")
     # Mặc định = đúng độ dài một chunk: chậm hơn thế là trả kết quả không kịp
     # tốc độ audio vào, hàng đợi dồn vô hạn. Ngân sách rộng hơn sẽ báo "còn
     # trong ngưỡng" ở đúng mức tải mà drift đã cho thấy là đang sập.
     ap.add_argument("--budget-s", type=float, help="ngưỡng p99 để tính CCU tối đa (mặc định: chunk)")
     ap.add_argument("--cooldown-s", type=float, default=10.0, help="nghỉ giữa hai run cho nguội")
-    ap.add_argument("--out", default=str(ROOT / "bench/results/asr_streaming.md"))
+    ap.add_argument("--out", default=str(ROOT / "bench/results/asr_bls.md"))
     args = ap.parse_args()
 
     # Phải xoá TRƯỚC khi import tritonclient: grpc đọc proxy lúc mở channel.

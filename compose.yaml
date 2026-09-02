@@ -126,7 +126,7 @@ services:
       - http://asr:8002/metrics
       # Cổng 8000 là HTTP của Triton trong container - hỏi cấu hình đang chạy
       - --config-url
-      - http://asr:8000/v2/models/asr_streaming/config
+      - http://asr:8000/v2/models/asr_bls/config
     logging: *logging
 
   prometheus:

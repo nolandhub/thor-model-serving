@@ -16,7 +16,7 @@ set -a; . ./.env; set +a
 
 compose() { docker compose "$@"; }
 
-WEIGHTS="model_repository/asr_streaming/1"
+WEIGHTS="model_repository/asr_bls/1"
 
 require_weights() {
   local missing=0

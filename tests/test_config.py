@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 from serving.metrics import CCU_TTL_S  # noqa: E402
 
-CONFIG_PBTXT = ROOT / "model_repository" / "asr_streaming" / "config.pbtxt"
+CONFIG_PBTXT = ROOT / "model_repository" / "asr_bls" / "config.pbtxt"
 DASH_DIR = ROOT / "config" / "grafana" / "dashboards"
 BUILDER = ROOT / "config" / "grafana" / "build_dashboard.py"
 PROMETHEUS_YML = ROOT / "config" / "prometheus.yml"

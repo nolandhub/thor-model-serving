@@ -1,8 +1,14 @@
-# Bench — đánh giá kiến trúc ASR trước khi chuyển sang BLS
+# Bench — đánh giá kiến trúc ASR
 
-Câu hỏi bài bench sinh ra để trả lời: **kiến trúc hiện tại (onnxruntime chạy thẳng
-trong Python backend) đang nghẽn ở đâu, và tách encoder ra thành model riêng để
-Triton gom batch (BLS) có đáng không.**
+Câu hỏi bài bench sinh ra để trả lời: **kiến trúc monolith cũ (onnxruntime chạy
+thẳng trong Python backend, model `asr_streaming`) đang nghẽn ở đâu, và tách
+encoder ra thành model riêng để Triton gom batch (BLS) có đáng không.**
+
+Đã chốt: có, chỉ bọc encoder (xem "Kết luận" bên dưới). `asr_streaming` đã bị xoá,
+model đang chạy là `asr_bls` (orchestrator, KIND_CPU) + `encoder` (KIND_GPU, nơi
+Triton thật sự gom batch). Bảng "mốc chuẩn" bên dưới đo trên `asr_streaming` -
+**`asr_bls` chưa được chạy lại bằng đúng quy trình CCU sweep này**, đó là việc
+cần làm tiếp theo trước khi tin số CCU/latency của kiến trúc mới.
 
 ## Chạy
 
@@ -11,7 +17,7 @@ Triton gom batch (BLS) có đáng không.**
 
     # microbench từng tầng ONNX, không qua Triton
     docker compose --profile asr --profile bench run --rm --entrypoint python3 bench \
-      bench/encoder_batch.py --encoder model_repository/asr_streaming/1/encoder.onnx
+      bench/encoder_batch.py --encoder model_repository/asr_bls/1/encoder.onnx
 
 Bench chạy **trong network của compose** để tới được `asr:8002` — cổng metrics cố ý
 không publish ra host vì data plane có thể mở ra LAN mà Triton không có auth.

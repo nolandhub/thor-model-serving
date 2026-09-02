@@ -3,7 +3,7 @@
 
 import time
 
-# Soi gương max_sequence_idle_microseconds trong asr_streaming/config.pbtxt.
+# Soi gương max_sequence_idle_microseconds trong asr_bls/config.pbtxt.
 # Query Grafana dùng đúng con số này để bỏ qua instance im lặng; lệch là CCU sai
 # âm thầm. test_serving_metrics.py và test_monitoring_config.py canh cả ba nơi.
 CCU_TTL_S = 60.0
@@ -52,7 +52,7 @@ class ModelMetrics:
         )
 
         # CCU thì ngược lại. GAUGE set() với label chung sẽ ghi đè giữa các
-        # instance, giá trị cuối là của process nào chạy sau. asr_streaming có
+        # instance, giá trị cuối là của process nào chạy sau. asr_bls có
         # count: 2 nên đây là ca thật. Tách theo instance, cộng lại ở PromQL.
         #
         # Tên label là "model_instance" chứ không phải "instance": Prometheus

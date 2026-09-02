@@ -131,13 +131,17 @@ Mặc định `BIND_ADDR=127.0.0.1`, tức chỉ gọi được từ chính Thor
 - **`docker -p` đi vòng qua `firewalld`.** Rule nằm ở chain `DOCKER`/`DOCKER-USER`,
   không phải `INPUT` — chặn bằng firewalld sẽ không có tác dụng như mong đợi.
 
-Contract cho client (model `asr_streaming` dùng `sequence_batching`, không phải
+Contract cho client (model `asr_bls` dùng `sequence_batching`, không phải
 request rời):
 
-- gRPC `thor:4001`, model `asr_streaming`, version `1`
+- gRPC `thor:4001`, model `asr_bls`, version `1`
 - **bắt buộc `stream_infer` kèm `sequence_id` + `sequence_start`/`sequence_end`**
 - input `AUDIO_CHUNK` FP32 `[-1]`, PCM mono **16 kHz**; output `TRANSCRIPT` BYTES `[1]`
-- `max_batch_size: 8`, `instance_group: 2 GPU` → trần khoảng 8 phiên đồng thời
+- `asr_bls` (KIND_CPU x2, orchestrator) gọi BLS sang `encoder` (KIND_GPU x3) - encoder
+  là nơi Triton thật sự gom batch nhiều stream, decoder/joiner batch trong process
+  của `asr_bls`. Cả hai khai `max_candidate_sequences: 64`, nhưng đó là trần lý
+  thuyết - trần thực đo được ở kiến trúc trước (`asr_streaming`, đã xoá) là 4 CCU;
+  `asr_bls` chưa được benchmark lại bằng cùng quy trình đó, xem `bench/README.md`
 - phiên im lặng quá **60 s** bị dọn (`max_sequence_idle_microseconds`)
 - HTTP `4000` chỉ để health/metadata; streaming phải đi gRPC
 - reference implementation: `client/asr_streaming_client.py`
@@ -182,13 +186,22 @@ Tag theo git sha là đường rollback duy nhất khi không có registry giữ
 | `config/prometheus.yml` | scrape `asr:8002` và `node-exporter:9100` qua DNS network |
 | `config/grafana/` | provisioning, dashboards, và `build_dashboard.py` sinh ra chúng |
 | `serving/metrics.py` | contract metric dùng chung — model.py và build_dashboard.py cùng import |
-| `model_repository/asr_streaming/` | copy nguyên từ `triton-voice-serving`, không đổi dòng nào |
+| `model_repository/asr_bls/` | BLS orchestrator (fbank + greedy batched) + trọng số (encoder/decoder/joiner.onnx, bpe.model) |
+| `model_repository/encoder/` | encoder tách riêng để Triton gom batch nhiều stream; `1/model.onnx` symlink sang `asr_bls/1/encoder.onnx` |
 | `tests/` | parity, bất biến cấu hình, và `dump_golden_asr.py` sinh fixture |
 | `docs/ARCHITECTURE.md` | tổng quan hệ thống và vì sao mọi thứ xếp như vậy |
 | `docs/superpowers/specs/` | thiết kế của lần refactor này |
 
 ## Việc còn lại
 
+- **Kiến trúc đã chốt: BLS chỉ bọc encoder** (`asr_bls` + `encoder`), không tách
+  toàn bộ 5 tầng như bản tham chiếu của team khác
+  (`voice-agent-deployment/asr-triton`) - microbench cho thấy decoder+joiner cộng
+  lại chỉ ~1.5% chi phí một lần chạy encoder, tách riêng chỉ cộng thêm `bls_tax`
+  cho phần không phải nút cổ chai. `asr_streaming` (bản monolith cũ) đã xoá.
+  **Chưa làm**: chạy lại đúng bộ CCU sweep (`./scripts/serving.sh bench`) nhắm
+  vào `asr_bls`/`encoder` để có số thật thay cho kết luận ở tầng microbench -
+  bảng "mốc chuẩn" trong `bench/README.md` đo trên kiến trúc cũ.
 - **Rủi ro coupling với `asr-triton:latest`** — image base do team khác kiểm
   soát. Họ rebuild/xoá thì lần build sau ra khác đi mà không có cảnh báo gì.
   `ASR_BASE_IMAGE` trong `.env` cho phép ghim theo digest; đường dài thì tự dựng

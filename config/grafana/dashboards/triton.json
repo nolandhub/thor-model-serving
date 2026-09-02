@@ -362,7 +362,7 @@
     },
     {
       "type": "timeseries",
-      "title": "asr_streaming · Latency breakdown",
+      "title": "asr_bls · Latency breakdown",
       "id": 10,
       "datasource": {
         "type": "prometheus",
@@ -393,7 +393,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(nv_inference_queue_summary_us_sum{model=\"asr_streaming\"}[1m]) / clamp_min(rate(nv_inference_queue_summary_us_count{model=\"asr_streaming\"}[1m]), 1e-9) / 1000",
+          "expr": "rate(nv_inference_queue_summary_us_sum{model=\"asr_bls\"}[1m]) / clamp_min(rate(nv_inference_queue_summary_us_count{model=\"asr_bls\"}[1m]), 1e-9) / 1000",
           "refId": "A",
           "legendFormat": "queue"
         },
@@ -402,7 +402,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(nv_inference_compute_input_summary_us_sum{model=\"asr_streaming\"}[1m]) / clamp_min(rate(nv_inference_compute_input_summary_us_count{model=\"asr_streaming\"}[1m]), 1e-9) / 1000",
+          "expr": "rate(nv_inference_compute_input_summary_us_sum{model=\"asr_bls\"}[1m]) / clamp_min(rate(nv_inference_compute_input_summary_us_count{model=\"asr_bls\"}[1m]), 1e-9) / 1000",
           "refId": "B",
           "legendFormat": "compute_input"
         },
@@ -411,7 +411,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(nv_inference_compute_infer_summary_us_sum{model=\"asr_streaming\"}[1m]) / clamp_min(rate(nv_inference_compute_infer_summary_us_count{model=\"asr_streaming\"}[1m]), 1e-9) / 1000",
+          "expr": "rate(nv_inference_compute_infer_summary_us_sum{model=\"asr_bls\"}[1m]) / clamp_min(rate(nv_inference_compute_infer_summary_us_count{model=\"asr_bls\"}[1m]), 1e-9) / 1000",
           "refId": "C",
           "legendFormat": "compute_infer"
         },
@@ -420,7 +420,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(nv_inference_compute_output_summary_us_sum{model=\"asr_streaming\"}[1m]) / clamp_min(rate(nv_inference_compute_output_summary_us_count{model=\"asr_streaming\"}[1m]), 1e-9) / 1000",
+          "expr": "rate(nv_inference_compute_output_summary_us_sum{model=\"asr_bls\"}[1m]) / clamp_min(rate(nv_inference_compute_output_summary_us_count{model=\"asr_bls\"}[1m]), 1e-9) / 1000",
           "refId": "D",
           "legendFormat": "compute_output"
         }

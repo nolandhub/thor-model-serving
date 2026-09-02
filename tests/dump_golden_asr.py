@@ -12,7 +12,7 @@ import onnxruntime as ort
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "model_repository" / "asr_streaming" / "1"))
+sys.path.insert(0, str(ROOT / "model_repository" / "asr_bls" / "1"))
 
 from client.common import load_wav_16k  # noqa: E402
 from streaming_search import (  # noqa: E402
@@ -24,7 +24,7 @@ from streaming_search import (  # noqa: E402
 )
 
 ASSETS = ROOT / "tests" / "assets"
-MODEL_DIR = ROOT / "model_repository" / "asr_streaming" / "1"
+MODEL_DIR = ROOT / "model_repository" / "asr_bls" / "1"
 
 # Hai mẫu, hai vai. sample_vi 3 giây đủ để bắt lỗi bind sai hay shape lệch.
 # sample_vi_long 18 giây mới bắt được sai số fp16 tích luỹ qua state - loại lỗi
@@ -39,7 +39,7 @@ def wav_path(stem: str) -> Path:
 def out_path(stem: str) -> Path:
     return ASSETS / f"golden_asr_{stem}.npz"
 
-# Soi gương model_repository/asr_streaming/1/model.py. Lệch một hằng ở đây là
+# Soi gương model_repository/asr_bls/1/model.py. Lệch một hằng ở đây là
 # fixture trông vẫn hợp lệ nhưng mô tả sai pipeline - loại sai khó thấy nhất.
 BLANK_ID = 0
 CONTEXT_SIZE = 2
