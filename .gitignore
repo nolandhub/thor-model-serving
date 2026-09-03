@@ -5,6 +5,9 @@
 # Cấu hình cục bộ của từng máy - commit .env.example thay vì file này
 .env
 
+scripts/hello-v2.json
+
+
 # Python
 __pycache__/
 *.py[cod]
@@ -18,3 +21,4 @@ bench/results/
 bench/result/
 .gitnexus
 CLAUDE.local.md
+scripts/hello-v2.json
