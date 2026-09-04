@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from bench.report import diff_counters, pct  # noqa: E402
-from bench.tei_metrics import server_side, snapshot_http  # noqa: E402
+from bench.tei_metrics import server_side, snapshot_http, unaccounted_ms  # noqa: E402
 # ClockSampler đọc /sys/class/devfreq của Thor, không dính gì tới ASR - import
 # lại chứ không chép, giống cách bench/run_rerank.py (gốc) đã làm.
 from bench.run_asr import ClockSampler, without_proxy_env  # noqa: E402
@@ -42,8 +42,8 @@ SAMPLE_S = 1.0
 
 LAT_COLUMNS = ("Top-k", "Mean (ms)", "P50 (ms)", "P95 (ms)", "P99 (ms)")
 SYS_COLUMNS = (
-    "Top-k", "avg_batch", "queue ms", "infer ms", "tokenize ms",
-    "GPU bận%", "GPU MiB", "GPC MHz",
+    "Top-k", "pairs/req", "avg_batch", "queue ms", "infer ms", "tokenize ms",
+    "overhead ms", "GPU busy%", "GPU MiB", "GPC MHz",
 )
 
 
@@ -171,17 +171,37 @@ def lat_row(k, lat):
     return (k, statistics.mean(ms), pct(ms, 50), pct(ms, 95), pct(ms, 99))
 
 
-def sys_row(k, s):
-    return (k, s["avg_batch"], s["queue_ms_per_req"], s["infer_ms_per_req"],
-            s["tokenize_ms_per_req"], s["gpu_busy_pct"], s["gpu_mib_peak"],
-            s["gpu_mhz_p50"])
+def sys_row(k, s, mean_ms):
+    """Hàng bảng system. Cần `mean_ms` của chính cửa sổ đo đó cho cột overhead.
+
+    Hai cột thêm về sau, mỗi cột chữa một điểm mù:
+
+    - `pairs/req` nói ngữ nghĩa của các cột thời gian. Ra 100 ở top-k 100 =
+      te_request_count đếm lời gọi HTTP, nên queue/infer/tokenize là TỔNG cho
+      cả request. Ra 1 = counter đếm từng cặp và mọi cột phải đọc lại từ đầu.
+      Số này tính sẵn trong server_side() từ lâu mà chưa bao giờ được in.
+    - `overhead` là phần client thấy mà server không nhận - xem unaccounted_ms.
+    """
+    return (k, s["pairs_per_request"], s["avg_batch"],
+            s["queue_ms_per_req"], s["infer_ms_per_req"], s["tokenize_ms_per_req"],
+            unaccounted_ms(mean_ms, s),
+            s["gpu_busy_pct"], s["gpu_mib_peak"], s["gpu_mhz_p50"])
 
 
 def table(columns, rows, fmt="{:.0f}"):
+    """Bảng markdown. Cột đầu in thô, các cột sau theo `fmt`.
+
+    `fmt` nhận một chuỗi dùng cho mọi cột, HOẶC một dãy fmt cho từng cột. Bảng
+    open-loop cần dạng dãy: latency tính bằng ms nên "{:.0f}" là đủ, còn lag
+    tính bằng giây - cùng một fmt sẽ làm tròn 0.05 thành 0.1 và xoá đúng cái
+    tín hiệu bài bench sinh ra để nhìn.
+    """
     head = "| " + " | ".join(columns) + " |"
     sep = "|" + "---|" * len(columns)
-    body = [f"| {k} | " + " | ".join(fmt.format(v) for v in stats) + " |"
-            for k, *stats in rows]
+    body = []
+    for k, *stats in rows:
+        fmts = [fmt] * len(stats) if isinstance(fmt, str) else list(fmt)
+        body.append(f"| {k} | " + " | ".join(f.format(v) for f, v in zip(fmts, stats)) + " |")
     return "\n".join([head, sep, *body])
 
 
@@ -217,10 +237,10 @@ def load_queries(path):
     for i, d in enumerate(items):
         for key in ("query", "texts"):
             if key not in d:
-                raise SystemExit(f"{path}[{i}]: thiếu khoá {key!r}")
+                raise SystemExit(f"{path}[{i}]: missing key {key!r}")
         out.append((d["query"], d["texts"]))
     if not out:
-        raise SystemExit(f"{path}: rỗng, không có query nào")
+        raise SystemExit(f"{path}: empty - no queries")
     return out
 
 
@@ -232,7 +252,7 @@ def prep_docs(args, k, texts):
     """
     docs = list(texts[:k])
     if len(docs) < k:
-        raise SystemExit(f"top-k {k} nhưng chỉ có {len(docs)} đoạn trong query này")
+        raise SystemExit(f"top-k {k} requested but this query has only {len(docs)} docs")
     if args.max_doc_tokens:
         docs = truncate(docs, args.max_doc_tokens)
     if args.sort_by_length:
@@ -255,21 +275,21 @@ def sample(args, queries, k, i):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="bảng latency + system reranker theo top-k")
+    ap = argparse.ArgumentParser(description="reranker latency + system tables by top-k")
     ap.add_argument("--url", default="http://127.0.0.1:9012", help="9012 = lab, 9002 = PROD")
-    ap.add_argument("--metrics-url", help="mặc định --url + /metrics")
+    ap.add_argument("--metrics-url", help="defaults to --url + /metrics")
     ap.add_argument("--container", default="rerank-lab",
-                    help="tên container - để đọc GPU busy%%/MiB thật qua nvidia-smi")
+                    help="container name - reads real GPU busy%%/MiB via nvidia-smi")
     ap.add_argument("--topk", default="10,20,50,100")
     ap.add_argument("--repeat", type=int, default=50,
-                    help="số lần đo mỗi mức; nearest-rank nên p99 cần >= 100 mẫu mới khác max")
+                    help="samples per level; nearest-rank, so p99 needs >=100 samples to differ from max")
     ap.add_argument("--warmup", type=int, default=3)
-    ap.add_argument("--words", type=int, default=120, help="độ dài mỗi doc khi TỰ SINH")
-    ap.add_argument("--file", help="dùng dữ liệu thật thay vì tự sinh")
+    ap.add_argument("--words", type=int, default=120, help="words per doc when SYNTHESIZING")
+    ap.add_argument("--file", help="use real data instead of synthetic")
     ap.add_argument("--max-doc-tokens", type=int,
-                    help="cắt mỗi doc về trần token trước khi gửi (vd 384)")
+                    help="truncate each doc to token cap before sending (e.g. 384)")
     ap.add_argument("--sort-by-length", action="store_true",
-                    help="sắp doc theo độ dài để giảm phần pad; không đổi thứ hạng")
+                    help="sort docs by length to cut padding; ranking unchanged")
     args = ap.parse_args()
     args.metrics_url = args.metrics_url or args.url + "/metrics"
 
@@ -281,11 +301,23 @@ def main():
     os.environ.clear()
     os.environ.update(clean)
 
-    levels = sorted({int(x) for x in args.topk.split(",")})
+    # Giữ NGUYÊN thứ tự gõ vào, chỉ khử trùng lặp. Trước đây sorted() nên
+    # `--topk 100,50,20,10` chạy y hệt `--topk 10,20,50,100` - thứ tự bị nuốt
+    # mất lặng lẽ.
+    #
+    # Thứ tự ở đây không phải chuyện trình bày, nó là một núm thí nghiệm: bench
+    # chạy hết mức này rồi mới sang mức kia, nên "mức k nào" trộn lẫn với "lúc
+    # nào trong run", và mọi thứ trôi theo thời gian (nhiệt, team khác vào máy)
+    # đều đội lốt thành hiệu ứng của top_k. Thor lại KHÔNG đọc được throttle
+    # reason (bẫy #5) nên không có cách nào phát hiện sau khi đã đo.
+    #
+    # Chạy hai lượt xuôi và ngược rồi so hai đường cong là đo được chính hiệu
+    # ứng đó: trùng nhau = bảng blocked tin được; lệch nhau = phải interleave.
+    levels = list(dict.fromkeys(int(x) for x in args.topk.split(",")))
     queries = load_queries(args.file) if args.file else None
     if queries is not None:
-        print(f"  {len(queries)} query trong {args.file}"
-              + (" (xoay vòng)" if len(queries) > 1 else ""), file=sys.stderr)
+        print(f"  {len(queries)} queries from {args.file}"
+              + (" (round-robin)" if len(queries) > 1 else ""), file=sys.stderr)
     opener = opener_no_proxy()
 
     lat_rows, sys_rows = [], []
@@ -293,7 +325,10 @@ def main():
         print(f"  top-k {k}", file=sys.stderr)
         lat, s = measure(opener, args, queries, k)
         lat_rows.append(lat_row(k, lat))
-        sys_rows.append(sys_row(k, s))
+        # Tính lại mean từ chính dãy lat chứ không bốc theo chỉ số từ lat_row:
+        # bốc theo chỉ số sẽ vỡ IM LẶNG nếu sau này có ai chèn cột vào
+        # LAT_COLUMNS, và cột overhead sẽ sai mà bảng vẫn in ra đẹp đẽ.
+        sys_rows.append(sys_row(k, s, statistics.mean(lat) * 1000))
 
     print(table(LAT_COLUMNS, lat_rows))
     print()

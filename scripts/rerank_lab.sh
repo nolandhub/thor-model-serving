@@ -9,39 +9,73 @@ PORT=${RERANK_LAB_PORT:-9012}
 MODEL=${RERANK_LAB_MODEL:-/u01/nhandlt2/reranker}
 IMAGE=${RERANK_LAB_IMAGE:-ddosify/text-embeddings-inference:blackwell-1.8.3-baai-bge-reranker-v2-m3}
 
-# Cấu hình prod, để `up` không tham số cho ra bản sao trung thực làm mốc đối chứng.
+# Cấu hình prod. Nền của MỌI lần dựng, không chỉ lần `up` không tham số: cờ bạn
+# truyền được trộn lên trên nền này, nên một thí nghiệm chỉ khác prod đúng chỗ
+# bạn cố ý đổi. Viết thành từng cặp (cờ, giá trị) - cmd_up duyệt theo cặp.
 DEFAULT_ARGS=(--max-client-batch-size 128)
 
 usage() {
     cat <<'EOF'
-rerank_lab.sh - nghịch container reranker mà không đụng prod
+rerank_lab.sh - experiment on a reranker container without touching prod
 
-    up [cờ TEI...]   dựng lại container với cờ mới (không tham số = giống hệt prod)
-    down             tắt, giữ container
-    rm               xoá hẳn
-    logs             theo dõi log (mỗi request in total/queue/inference/tokenize)
-    info             /info - cấu hình ĐANG chạy, hỏi từ server chứ không đoán
-    metrics          /metrics thô
-    status           đang chạy không, ăn bao nhiêu RAM
+    up [TEI flags...]  recreate the container with new flags (no args = prod replica)
+    down               stop, keep the container
+    rm                 remove entirely
+    logs               follow logs (each request prints total/queue/inference/tokenize)
+    info               /info - the LIVE config, asked from the server, not guessed
+    metrics            raw /metrics
+    status             running or not, and how much RAM it holds
 
-Ví dụ:
+Examples:
     ./scripts/rerank_lab.sh up
-    ./scripts/rerank_lab.sh up --max-client-batch-size 128 --max-input-length 512 --auto-truncate
-    ./scripts/rerank_lab.sh up --max-client-batch-size 128 --dtype float16
+    ./scripts/rerank_lab.sh up --max-batch-tokens 32768
+    ./scripts/rerank_lab.sh up --max-input-length 512 --auto-truncate
+    ./scripts/rerank_lab.sh up --dtype float16
 
-TEI đọc cờ ĐÚNG MỘT LẦN lúc khởi động. Sửa mà không dựng lại thì vẫn là cấu hình
-cũ - luôn đối chiếu bằng `info` trước khi tin một con số nào.
+Your flags are MERGED onto the prod baseline (--max-client-batch-size 128), not
+substituted for it - so `up --max-batch-tokens N` differs from prod by exactly one
+variable, not two. To change a baseline flag, pass it yourself; yours wins.
+
+TEI reads its flags EXACTLY ONCE at startup. Editing without recreating leaves the
+old config running - always confirm with `info` before trusting any number.
 EOF
 }
 
 require_model() {
-    [ -d "$MODEL" ] || { echo "không thấy model: $MODEL" >&2; exit 1; }
+    [ -d "$MODEL" ] || { echo "model not found: $MODEL" >&2; exit 1; }
 }
 
 cmd_up() {
     require_model
-    local args=("$@")
-    [ ${#args[@]} -eq 0 ] && args=("${DEFAULT_ARGS[@]}")
+
+    # Trộn DEFAULT_ARGS với cờ người dùng, cờ người dùng thắng.
+    #
+    # Trước đây là THAY THẾ: truyền một cờ bất kỳ là mất sạch mặc định, nên
+    # `up --max-batch-tokens 32768` âm thầm đổi HAI biến - cờ muốn thử, VÀ
+    # max-client-batch-size tụt 128 -> 32 (mặc định TEI) khiến mọi request
+    # top-k > 32 fail 413. Thí nghiệm phải khác đối chứng đúng một chỗ.
+    #
+    # Phải khử trùng lặp chứ không chồng cờ lên nhau: clap của TEI từ chối cờ
+    # lặp - "cannot be used multiple times" - đã đo, container chết ngay khi
+    # khởi động. Bắt cả dạng --cờ=giá-trị vì nó cũng tính là lặp.
+    #
+    # Chỉ DEFAULT_ARGS mới buộc phải là cặp (cờ, giá trị); cờ người dùng nối
+    # nguyên xi nên cờ boolean như --auto-truncate vẫn đi qua bình thường.
+    local args=() i flag a found
+    for ((i = 0; i < ${#DEFAULT_ARGS[@]}; i += 2)); do
+        flag=${DEFAULT_ARGS[i]}
+        found=0
+        for a in "$@"; do
+            if [ "$a" = "$flag" ] || [ "${a#"$flag"=}" != "$a" ]; then
+                found=1
+                break
+            fi
+        done
+        if [ "$found" -eq 0 ]; then
+            args+=("$flag" "${DEFAULT_ARGS[i+1]}")
+        fi
+    done
+    args+=("$@")
 
     docker rm -f "$NAME" >/dev/null 2>&1 || true
 
@@ -63,27 +97,27 @@ cmd_up() {
         "$IMAGE" \
         "${args[@]}" >/dev/null
 
-    printf 'đang nạp model'
+    printf 'loading model'
     for _ in $(seq 1 40); do
         # Cờ sai thì TEI thoát ngay. Không chốt chặn ở đây thì phải đợi hết 120s
         # mới biết, mà lỗi đã nằm sẵn trong log từ giây đầu.
         if [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" != "true" ]; then
-            echo " - CHẾT NGAY KHI KHỞI ĐỘNG:"
+            echo " - DIED ON STARTUP:"
             docker logs "$NAME" 2>&1 | tail -12
             return 1
         fi
         if [ "$(curl -s --noproxy '*' -o /dev/null -w '%{http_code}' --max-time 3 \
                 "http://127.0.0.1:$PORT/health" 2>/dev/null)" = "200" ]; then
-            echo " - sẵn sàng ở 127.0.0.1:$PORT"
+            echo " - ready on 127.0.0.1:$PORT"
             echo
-            echo "cấu hình ĐANG chạy (hỏi từ server):"
+            echo "LIVE config (asked from the server):"
             cmd_info
             return 0
         fi
         printf '.'
         sleep 3
     done
-    echo " - QUÁ HẠN. Log:"
+    echo " - TIMED OUT. Logs:"
     docker logs --tail 40 "$NAME"
     return 1
 }
@@ -94,8 +128,8 @@ cmd_info() {
 
 case "${1:-}" in
     up)      shift; cmd_up "$@" ;;
-    down)    docker stop "$NAME" >/dev/null && echo "đã tắt $NAME (start lại: docker start $NAME)" ;;
-    rm)      docker rm -f "$NAME" >/dev/null && echo "đã xoá $NAME (model ở $MODEL vẫn còn)" ;;
+    down)    docker stop "$NAME" >/dev/null && echo "stopped $NAME (restart with: docker start $NAME)" ;;
+    rm)      docker rm -f "$NAME" >/dev/null && echo "removed $NAME (model at $MODEL is untouched)" ;;
     logs)    docker logs -f --tail 50 "$NAME" ;;
     info)    cmd_info ;;
     metrics) curl -s --noproxy '*' "http://127.0.0.1:$PORT/metrics" ;;

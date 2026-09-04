@@ -21,7 +21,7 @@ def rtf(compute_s: float, audio_s: float) -> float:
     chỉ khác: không làm tròn, vì histogram cần giá trị thô mới rơi đúng bucket.
     """
     if audio_s <= 0:
-        raise ValueError(f"audio dài {audio_s}s - không tính được RTF")
+        raise ValueError(f"audio length {audio_s}s - cannot compute RTF")
     return compute_s / audio_s
 
 
@@ -42,7 +42,7 @@ class ModelMetrics:
         # chỉ giữ Metric thì family bị GC và metric chết im lặng lúc chạy thật.
         self._rtf_family = family(
             name="voice_rtf",
-            description="Thời gian xử lý chia độ dài audio",
+            description="Processing time divided by audio duration",
             kind=family.HISTOGRAM,
         )
         # RTF để label chung: observe() của HISTOGRAM cộng dồn đúng qua nhiều
@@ -61,14 +61,14 @@ class ModelMetrics:
         ccu_labels = {"model": model, "model_instance": instance}
         self._ccu_family = family(
             name="voice_ccu",
-            description="Số phiên đang sống trên một model instance",
+            description="Live sessions on one model instance",
             kind=family.GAUGE,
         )
         self._ccu = self._ccu_family.Metric(labels=dict(ccu_labels))
 
         self._ccu_at_family = family(
             name="voice_ccu_updated_at",
-            description="Unix timestamp lần cuối voice_ccu được cập nhật",
+            description="Unix timestamp of the last voice_ccu update",
             kind=family.GAUGE,
         )
         self._ccu_at = self._ccu_at_family.Metric(labels=dict(ccu_labels))

@@ -32,6 +32,6 @@ def chunk_wav(wav: np.ndarray, chunk_ms: int = 200) -> list[np.ndarray]:
     """
     chunk = SAMPLE_RATE * chunk_ms // 1000
     if chunk <= 0:
-        raise ValueError(f"chunk_ms={chunk_ms} cho ra chunk {chunk} mẫu")
+        raise ValueError(f"chunk_ms={chunk_ms} yields a {chunk}-sample chunk")
     wav = np.asarray(wav, dtype=np.float32).reshape(-1)
     return [wav[i : i + chunk] for i in range(0, len(wav) - chunk + 1, chunk)]

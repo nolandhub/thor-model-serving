@@ -416,13 +416,13 @@ BOARDS = {
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stdout", action="store_true", help="in ra thay vì ghi file")
+    ap.add_argument("--stdout", action="store_true", help="print to stdout instead of writing files")
     ap.add_argument("--board", choices=[*BOARDS, "all"], default="all")
     args = ap.parse_args()
 
     names = list(BOARDS) if args.board == "all" else [args.board]
     if args.stdout and len(names) > 1:
-        ap.error("--stdout phải kèm --board vì có nhiều hơn một board")
+        ap.error("--stdout requires --board because there is more than one board")
 
     for name in names:
         filename, rows, uid, title, tags = BOARDS[name]
@@ -432,4 +432,4 @@ if __name__ == "__main__":
         else:
             DASH_DIR.mkdir(parents=True, exist_ok=True)
             (DASH_DIR / filename).write_text(text)
-            print(f"đã ghi {DASH_DIR / filename}")
+            print(f"wrote {DASH_DIR / filename}")

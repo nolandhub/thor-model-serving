@@ -49,7 +49,7 @@ def per_sample_ms(times_s, batch):
     bộ nhớ và chọn thuật toán conv, đắt hơn hẳn phần còn lại.
     """
     if not times_s:
-        raise ValueError("chưa đo được lần chạy nào")
+        raise ValueError("no run measured yet")
     return statistics.median(times_s) / batch * 1000
 
 
@@ -125,19 +125,19 @@ def main():
     symbol = x.shape[0] if isinstance(x.shape[0], str) else None
     if symbol is None:
         raise SystemExit(
-            f"chiều batch của {x.name} là {x.shape[0]} (cố định) - bản export này không "
-            "chạy batch được, và đó đã là câu trả lời: BLS không gom được gì"
+            f"batch dim of {x.name} is {x.shape[0]} (fixed) - this export cannot batch, "
+            "which is already the answer: BLS has nothing to gain"
         )
-    print(f"input {x.name} {x.shape}, ký hiệu batch {symbol!r}")
+    print(f"input {x.name} {x.shape}, batch symbol {symbol!r}")
 
     specs = [(i.shape, _ORT_TO_NP[i.type]) for i in session.get_inputs()[1:]]
     if specs:
         per_stream = state_bytes(specs, symbol, 1)
-        print(f"state: {len(specs)} tensor, {per_stream / 1024:.1f} KiB mỗi stream "
-              f"(cận dưới) - BLS phải chuyển ngần này qua ranh giới model 2 lượt mỗi chunk")
+        print(f"state: {len(specs)} tensors, {per_stream / 1024:.1f} KiB per stream "
+              f"(lower bound) - BLS moves this across the model boundary twice per chunk")
 
     base = None
-    print("\n| batch | ms/lần chạy | ms/mẫu | nhanh hơn batch 1 |")
+    print("\n| batch | ms/run | ms/sample | speedup vs batch 1 |")
     print("|---|---|---|---|")
     for batch in [int(b) for b in args.batches.split(",")]:
         times = time_batch(session, batch, symbol, args.iters, args.warmup)
@@ -147,9 +147,9 @@ def main():
               f"| {base / per_sample:.2f}x |")
 
     print(
-        "\nCột cuối là TRẦN mà BLS có thể mua: gom N chunk thành một lần gọi encoder "
-        "nhanh hơn ngần ấy lần so với gọi N lượt riêng. Trừ bls_tax (chi phí copy "
-        "tensor qua ranh giới model, nền hiện tại 0.00-0.01) ra mới là phần thật sự lời."
+        "\nLast column is the CEILING BLS can buy: batching N chunks into one encoder "
+        "call is that much faster than N separate calls. Subtract bls_tax (tensor-copy "
+        "cost across the model boundary, currently 0.00-0.01) to get the real gain."
     )
 
 

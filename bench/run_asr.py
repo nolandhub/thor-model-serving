@@ -38,7 +38,7 @@ CLOCK_SAMPLE_S = 0.5
 # ở chỗ nó là 1.0 hay lớn hơn - làm tròn 1 chữ số sẽ nuốt mất khác biệt đó.
 COLUMNS = [
     ("p99_latency_s", "p99 (s)", "{:.3f}"),
-    ("final_drift_s", "drift cuối (s)", "{:+.2f}"),
+    ("final_drift_s", "final drift (s)", "{:+.2f}"),
     ("avg_batch", "avg_batch", "{:.2f}"),
     ("bls_tax", "bls_tax", "{:.2f}"),
     ("queue_us_per_request", "queue (µs/req)", "{:.0f}"),
@@ -56,10 +56,10 @@ def parse_ccus(spec):
     for part in spec.split(","):
         ccu = int(part)
         if ccu <= 0:
-            raise ValueError(f"CCU {ccu} không dương")
+            raise ValueError(f"CCU {ccu} is not positive")
         out.add(ccu)
     if not out:
-        raise ValueError(f"không đọc được mức CCU nào từ {spec!r}")
+        raise ValueError(f"no CCU level parsed from {spec!r}")
     return sorted(out)
 
 
@@ -89,7 +89,7 @@ def metrics_reader(container, metrics_url):
         return functools.partial(snapshot_http, metrics_url)
     if container:
         return functools.partial(snapshot, container)
-    raise ValueError("không có nguồn metrics: cần --metrics-url hoặc --container")
+    raise ValueError("no metrics source: need --metrics-url or --container")
 
 
 def warmup_slice(chunks, n):
@@ -128,7 +128,7 @@ def fetch_model_config(url):
         with opener.open(url, timeout=5) as resp:
             return json.load(resp)
     except (OSError, ValueError) as exc:
-        print(f"  không đọc được config đang chạy ({exc}) - bảng sẽ không ghi cấu hình")
+        print(f"  cannot read running config ({exc}) - table will omit the config line")
         return None
 
 
@@ -202,7 +202,7 @@ def gpu_state():
             check=True, capture_output=True, text=True, timeout=10,
         ).stdout.strip().splitlines()[0]
     except (OSError, subprocess.SubprocessError, IndexError):
-        return "nvidia-smi không đọc được", False
+        return "nvidia-smi unreadable", False
     return out, throttled(out.split(",")[-1])
 
 
@@ -236,7 +236,7 @@ def _run_stream(url, chunks, chunk_s, t_start, seq_id, out, errors):
         while len(out["recv"]) < len(chunks):
             t, error = recv_q.get(timeout=30)
             if error:
-                raise RuntimeError(f"server trả lỗi: {error}")
+                raise RuntimeError(f"server returned error: {error}")
             out["recv"].append(t)
     except Exception as exc:                      # noqa: BLE001 - gom về thread chính
         errors.append(exc)
@@ -255,7 +255,7 @@ def warmup(args, chunks):
     part = warmup_slice(chunks, args.warmup_chunks)
     if not part:
         return
-    print(f"  warmup {len(part)} chunk (kết quả bỏ)")
+    print(f"  warmup {len(part)} chunks (results discarded)")
     stream = {"t_start": time.monotonic(), "send": [], "recv": []}
     errors = []
     _run_stream(args.url, part, 0.0, time.monotonic(), int(time.time()) % 2**28 * 16, stream, errors)
@@ -296,7 +296,7 @@ def run_once(args, read_counters, ccu, chunks, run_idx):
     gpu_after, hot_after = gpu_state()
     valid = not (hot_before or hot_after)
     if not valid:
-        print(f"    bỏ run: GPU bị hãm ({gpu_before} -> {gpu_after})")
+        print(f"    run discarded: GPU throttled ({gpu_before} -> {gpu_after})")
     return {
         "ccu": ccu, "run": run_idx, "chunk_s": args.chunk_ms / 1000,
         "valid": valid, "streams": streams, "clock": clock,
@@ -320,24 +320,24 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="localhost:8001")
     ap.add_argument("--container", default="thor-asr-triton",
-                    help="chạy trên host: đọc /metrics bằng docker exec vào container này")
+                    help="running on host: read /metrics via docker exec into this container")
     ap.add_argument("--metrics-url",
-                    help="chạy trong network compose: đọc thẳng, vd http://asr:8002/metrics")
+                    help="running inside compose network: read directly, e.g. http://asr:8002/metrics")
     ap.add_argument("--wav", default=str(ROOT / "tests/assets/sample_vi_long.wav"))
     ap.add_argument("--chunk-ms", type=int, default=200)
     # Trần 8 là max_candidate_sequences trong config.pbtxt - vượt qua thì các
     # sequence dư nằm chờ ngoài cửa và cái đo được không còn là sức chứa model.
     ap.add_argument("--ccu", default="1,2,4,8")
-    ap.add_argument("--runs", type=int, default=3, help="số run mỗi mức, lấy median")
+    ap.add_argument("--runs", type=int, default=3, help="runs per level, median is reported")
     # 25 chunk = 5s audio, gửi dồn nên chỉ tốn khoảng một giây. Đặt 0 để tắt
     # khi biết chắc server đã chạy nóng từ trước.
-    ap.add_argument("--warmup-chunks", type=int, default=25, help="chunk chạy nóng, kết quả bỏ")
+    ap.add_argument("--warmup-chunks", type=int, default=25, help="warmup chunks, results discarded")
     ap.add_argument("--config-url", help="vd http://asr:8000/v2/models/asr_bls/config")
     # Mặc định = đúng độ dài một chunk: chậm hơn thế là trả kết quả không kịp
     # tốc độ audio vào, hàng đợi dồn vô hạn. Ngân sách rộng hơn sẽ báo "còn
     # trong ngưỡng" ở đúng mức tải mà drift đã cho thấy là đang sập.
-    ap.add_argument("--budget-s", type=float, help="ngưỡng p99 để tính CCU tối đa (mặc định: chunk)")
-    ap.add_argument("--cooldown-s", type=float, default=10.0, help="nghỉ giữa hai run cho nguội")
+    ap.add_argument("--budget-s", type=float, help="p99 budget for max-CCU verdict (default: one chunk)")
+    ap.add_argument("--cooldown-s", type=float, default=10.0, help="cooldown between runs")
     ap.add_argument("--out", default=str(ROOT / "bench/results/asr_bls.md"))
     args = ap.parse_args()
 
@@ -355,10 +355,10 @@ def main():
     chunks = chunk_wav(load_wav_16k(args.wav), args.chunk_ms)
     ccus = parse_ccus(args.ccu)
     print(f"{len(chunks)} chunk x {args.chunk_ms}ms = {len(chunks) * args.chunk_ms / 1000:.1f}s "
-          f"audio/stream | CCU {ccus} | {args.runs} run/mức")
+          f"audio/stream | CCU {ccus} | {args.runs} runs/level")
 
     cfg = fetch_model_config(args.config_url) if args.config_url else None
-    cfg_line = model_config_summary(cfg) if cfg else "cấu hình đang chạy: không đọc được"
+    cfg_line = model_config_summary(cfg) if cfg else "running config: unreadable"
     print(f"  {cfg_line}")
 
     warmup(args, chunks)
@@ -373,7 +373,7 @@ def main():
             # phút thứ nhất mà tới phút thứ mười lăm mới báo là mất trắng cả
             # phép đo. Vừa fail-fast vừa cho thấy số đang đi về đâu.
             s = run_summary(rec)
-            print(f"    p99 {s['p99_latency_s']:.3f}s | drift cuối {s['final_drift_s']:+.2f}s "
+            print(f"    p99 {s['p99_latency_s']:.3f}s | final drift {s['final_drift_s']:+.2f}s "
                   f"| avg_batch {s['avg_batch']:.2f}")
             time.sleep(args.cooldown_s)
 
@@ -381,21 +381,21 @@ def main():
     p99 = {ccu: m["p99_latency_s"] for ccu, m in agg.items()}
     table = markdown_table(agg)
     verdict = (
-        f"- CCU tối đa còn dưới p99 {args.budget_s}s: **{max_ccu_within_budget(p99, args.budget_s)}**\n"
-        f"- avg_batch cao nhất: **{max(m['avg_batch'] for m in agg.values()):.2f}** "
-        "(≈1.0 nghĩa là dynamic batcher không gom được gì - BLS chỉ còn phần chi phí)"
+        f"- Max CCU within p99 {args.budget_s}s: **{max_ccu_within_budget(p99, args.budget_s)}**\n"
+        f"- Highest avg_batch: **{max(m['avg_batch'] for m in agg.values()):.2f}** "
+        "(~1.0 means the dynamic batcher gathered nothing - BLS is pure overhead)"
     )
     gpu, _ = gpu_state()
     body = (
         f"# Bench `{MODEL}`\n\n"
         f"{len(chunks) * args.chunk_ms / 1000:.1f}s audio/stream, chunk {args.chunk_ms}ms, "
-        f"median của {args.runs} run. nvidia-smi lúc kết thúc: `{gpu}`.\n\n"
-        f"Cấu hình Triton ĐANG CHẠY lúc đo: `{cfg_line}`. Đọc từ server chứ không "
-        "từ config.pbtxt - sửa file mà quên restart thì Triton vẫn chạy cấu hình cũ.\n\n"
-        "Cột **GPC** là trung vị clock GPU đo TRONG lúc chạy. Thor không báo được "
-        "mình có bị hãm hay không (NVML không xuất throttle reason cho iGPU, "
-        "`/sys/class/thermal` rỗng), nên đây là chứng cứ để đối chiếu giữa hai lần "
-        "đo: cùng mức tải mà clock lệch nhiều thì hai bảng không so với nhau được.\n\n"
+        f"median of {args.runs} runs. nvidia-smi at finish: `{gpu}`.\n\n"
+        f"Triton config LIVE at measurement time: `{cfg_line}`. Read from the server, not "
+        "from config.pbtxt - editing the file without a restart leaves Triton on the old config.\n\n"
+        "The **GPC** column is the median GPU clock sampled DURING the run. Thor cannot report "
+        "whether it is throttled (NVML exposes no throttle reason for the iGPU, "
+        "`/sys/class/thermal` is empty), so this is corroborating evidence across runs: "
+        "at the same load, a large clock gap means the two tables are not comparable.\n\n"
         f"{table}\n\n{verdict}\n"
     )
     out = Path(args.out)

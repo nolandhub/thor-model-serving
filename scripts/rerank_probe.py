@@ -48,11 +48,11 @@ def load_file(path, k):
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     for key in ("query", "texts"):
         if key not in data:
-            raise SystemExit("%s: thiếu khoá %r" % (path, key))
+            raise SystemExit("%s: missing key %r" % (path, key))
     docs = data["texts"]
     if k is not None:
         if k > len(docs):
-            raise SystemExit("--k %d nhưng file chỉ có %d đoạn" % (k, len(docs)))
+            raise SystemExit("--k %d but file has only %d docs" % (k, len(docs)))
         docs = docs[:k]
     return data["query"], docs, data.get("raw_scores")
 
@@ -81,19 +81,19 @@ def token_len(port, text):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="bắn thử vào reranker")
-    ap.add_argument("--port", type=int, default=9012, help="9012 = lab, 9002 = PROD (cẩn thận)")
-    ap.add_argument("--file", help="đọc query+texts từ file JSON, vd scripts/hello.json")
+    ap = argparse.ArgumentParser(description="quick probe against the reranker")
+    ap.add_argument("--port", type=int, default=9012, help="9012 = lab, 9002 = PROD (careful)")
+    ap.add_argument("--file", help="read query+texts from a JSON file, e.g. scripts/hello.json")
     ap.add_argument("--k", type=int, default=None,
-                    help="số doc mỗi request (tự sinh: mặc định 15; --file: lấy k đoạn đầu)")
-    ap.add_argument("--words", type=int, default=120, help="độ dài mỗi doc khi TỰ SINH")
-    ap.add_argument("--repeat", type=int, default=20, help="số lần đo (sau warmup)")
+                    help="docs per request (synthetic: default 15; --file: first k docs)")
+    ap.add_argument("--words", type=int, default=120, help="words per doc when SYNTHESIZING")
+    ap.add_argument("--repeat", type=int, default=20, help="measured iterations (after warmup)")
     ap.add_argument("--warmup", type=int, default=3)
-    ap.add_argument("--show", action="store_true", help="in điểm và thứ hạng thay vì đo độ trễ")
+    ap.add_argument("--show", action="store_true", help="print scores and ranking instead of measuring latency")
     ap.add_argument("--raw", dest="raw", action="store_true", default=None,
-                    help="điểm logit thô - nhạy với nhiễu, dùng khi so hai cấu hình")
+                    help="raw logit scores - noise-sensitive, use when comparing two configs")
     ap.add_argument("--no-raw", dest="raw", action="store_false",
-                    help="điểm 0..1 - dễ đọc, dễ đặt ngưỡng cắt")
+                    help="0..1 scores - readable, easy to threshold")
     args = ap.parse_args()
 
     if args.file:
@@ -103,9 +103,9 @@ def main():
         query = QUERY
         docs = make_docs(args.k if args.k is not None else 15, args.words)
         raw_from_file = None
-        source = "tự sinh (%d từ/doc)" % args.words
+        source = "synthetic (%d words/doc)" % args.words
         if len(set(docs)) < len(docs):
-            source += "  [CẢNH BÁO: %d/%d đoạn bị trùng - chỉ %d văn bản duy nhất]" % (
+            source += "  [WARNING: %d/%d docs duplicated - only %d unique texts]" % (
                 len(docs) - len(set(docs)), len(docs), len(set(docs)))
 
     # Ưu tiên cờ dòng lệnh, rồi tới khoá trong file, cuối cùng mặc định thô.
@@ -113,11 +113,11 @@ def main():
         raw_from_file if raw_from_file is not None else True)
 
     n_tok = token_len(args.port, query + " " + docs[0])
-    print("cổng %d | K=%d doc | %s | %s" % (
+    print("port %d | K=%d docs | %s | %s" % (
         args.port, len(docs),
-        ("~%d token/cặp" % n_tok) if n_tok else "(/tokenize không có)",
-        "điểm thô" if raw else "điểm 0..1"))
-    print("nguồn: %s" % source)
+        ("~%d tokens/pair" % n_tok) if n_tok else "(/tokenize unavailable)",
+        "raw scores" if raw else "0..1 scores"))
+    print("source: %s" % source)
     print()
 
     payload = {"query": query, "texts": docs, "raw_scores": raw}
@@ -127,7 +127,7 @@ def main():
 
     if args.show:
         out = post(args.port, "/rerank", payload)
-        print("%-6s %14s  %s" % ("doc", "điểm", "văn bản (… = chỉ cắt khi in, model nhận đủ)"))
+        print("%-6s %14s  %s" % ("doc", "score", "text (... = truncated for display only; model got it all)"))
         print("-" * 88)
         for r in sorted(out, key=lambda r: -r["score"]):
             print("%-6d %14.5f  %s" % (r["index"], r["score"], clip(docs[r["index"]])))
@@ -139,17 +139,17 @@ def main():
         post(args.port, "/rerank", payload)
         lat.append(time.perf_counter() - t0)
 
-    print("%d lần đo, mỗi lần %d cặp" % (len(lat), len(docs)))
+    print("%d iterations, %d pairs each" % (len(lat), len(docs)))
     print("-" * 46)
     for label, v in (("p50", pct(lat, 50)), ("p90", pct(lat, 90)),
                      ("p99", pct(lat, 99)), ("min", min(lat)), ("max", max(lat))):
         print("  %-4s %8.1f ms" % (label, v * 1000))
-    print("  %-4s %8.1f ms" % ("tb", statistics.mean(lat) * 1000))
+    print("  %-4s %8.1f ms" % ("mean", statistics.mean(lat) * 1000))
     print()
-    print("  thông lượng: %.1f cặp/giây" % (len(docs) / statistics.mean(lat)))
+    print("  throughput: %.1f pairs/sec" % (len(docs) / statistics.mean(lat)))
     print()
-    print("Đây là closed-loop: gửi -> chờ -> gửi tiếp. Server chậm thì client tự gửi")
-    print("thưa ra, nên KHÔNG thấy được hàng đợi dồn. Muốn thấy phải bench open-loop.")
+    print("This is closed-loop: send -> wait -> send. A slow server makes the client")
+    print("back off, so queue build-up is INVISIBLE here. Use an open-loop bench for that.")
 
 
 if __name__ == "__main__":

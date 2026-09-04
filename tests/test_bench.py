@@ -1,6 +1,7 @@
 # ABOUTME: Test các hàm thuần của bench/ - chạy được khi Thor tắt, không cần GPU lẫn server
 # ABOUTME: Chạy: pytest tests/test_bench.py
 
+import statistics
 import sys
 from pathlib import Path
 
@@ -30,7 +31,10 @@ from bench.run_asr import (  # noqa: E402
     throttled,
     without_proxy_env,
 )
+from bench.rerank_bench import table  # noqa: E402
+from bench.run_rerank import verdict  # noqa: E402
 from bench.schedule import send_deadlines  # noqa: E402
+from bench.tei_metrics import tail_lag, unaccounted_ms  # noqa: E402
 from bench.triton_metrics import counters_for_model, parse_exposition  # noqa: E402
 
 
@@ -328,7 +332,7 @@ def test_aggregate_loai_run_danh_dau_invalid():
 
 
 def test_aggregate_khong_con_run_hop_le_nao_bao_loi():
-    with pytest.raises(ValueError, match="hợp lệ"):
+    with pytest.raises(ValueError, match="no valid run"):
         aggregate([_record(valid=False)])
 
 
@@ -417,7 +421,7 @@ def test_metrics_reader_dung_docker_exec_khi_chay_tren_host():
 
 
 def test_metrics_reader_khong_co_nguon_nao_bao_loi():
-    with pytest.raises(ValueError, match="nguồn"):
+    with pytest.raises(ValueError, match="metrics source"):
         metrics_reader(None, None)
 
 
@@ -572,3 +576,89 @@ def test_model_config_summary_nhieu_instance_group():
 def test_model_config_summary_khong_co_sequence_batching():
     cfg = {k: v for k, v in _CFG.items() if k != "sequence_batching"}
     assert "max_candidate_sequences" not in model_config_summary(cfg)
+
+
+# --- unaccounted_ms: phần độ trễ không metric nào nhận -----------------------
+# mean − (queue + infer + tokenize). Ở top-k 100 nó ra 122ms trên tổng 539ms:
+# lớn hơn cả queue, mà bảng hồi đó không có cột nào cho nó nên nó vô hình.
+
+
+def _srv(queue_ms=0.0, infer_ms=0.0, tokenize_ms=0.0):
+    return {"queue_ms_per_req": queue_ms, "infer_ms_per_req": infer_ms,
+            "tokenize_ms_per_req": tokenize_ms}
+
+
+def test_unaccounted_la_phan_con_lai_sau_ba_chang_cua_server():
+    s = _srv(queue_ms=77.8, infer_ms=336.7, tokenize_ms=2.1)
+    assert unaccounted_ms(539.0, s) == pytest.approx(122.4)
+
+
+def test_unaccounted_bang_khong_khi_server_nhan_het():
+    assert unaccounted_ms(100.0, _srv(queue_ms=40.0, infer_ms=60.0)) == pytest.approx(0.0)
+
+
+def test_unaccounted_am_KHONG_bi_kep_ve_khong():
+    # Số âm là bằng chứng ba chặng đang chồng lấn nhau, tức là cách đọc bảng
+    # phải đổi. Kẹp về 0 là giấu mất đúng cái tín hiệu đó.
+    assert unaccounted_ms(100.0, _srv(queue_ms=80.0, infer_ms=80.0)) == pytest.approx(-60.0)
+
+
+# --- tail_lag: hàng đợi có đang dồn không ------------------------------------
+# Cùng vai trò với `drift cuối` của bench ASR và cũng quan trọng hơn p99: p99
+# nhìn từng request rời rạc, tail_lag nhìn xu hướng tích luỹ.
+
+
+def test_tail_lag_quanh_khong_khi_server_bam_kip_nhip():
+    assert tail_lag([0.01, -0.01, 0.0, 0.01, -0.01] * 4) == pytest.approx(0.0, abs=0.02)
+
+
+def test_tail_lag_bat_duoc_phan_duoi_chu_khong_phai_trung_binh_ca_run():
+    # 90 mẫu đầu sạch, 10 mẫu cuối dồn: trung bình cả run sẽ giấu mất, tail_lag
+    # thì không - đó là lý do hàm này tồn tại.
+    lags = [0.0] * 90 + [5.0] * 10
+    assert tail_lag(lags) == pytest.approx(5.0)
+    assert statistics.mean(lags) < 1.0
+
+
+def test_tail_lag_dung_median_nen_mot_mau_rac_o_cuoi_khong_lat_ket_luan():
+    assert tail_lag([0.0] * 9 + [99.0], frac=1.0) == pytest.approx(0.0)
+
+
+def test_tail_lag_run_rong_bao_loi():
+    with pytest.raises(ValueError):
+        tail_lag([])
+
+
+# --- table: fmt theo từng cột ------------------------------------------------
+# Latency ms và lag giây không dùng chung được một fmt: "{:.1f}" làm tròn lag
+# 0.05 thành 0.1 và xoá đúng tín hiệu cần nhìn.
+
+
+def test_table_mot_fmt_dung_cho_moi_cot():
+    out = table(("a", "b", "c"), [(1, 2.5, 3.5)], fmt="{:.1f}")
+    assert "| 1 | 2.5 | 3.5 |" in out
+
+
+def test_table_day_fmt_ap_rieng_tung_cot():
+    out = table(("a", "b", "c"), [(1, 2.5, 0.05)], fmt=("{:.0f}", "{:+.3f}"))
+    assert "| 1 | 2 | +0.050 |" in out
+
+
+# --- verdict: sức chứa phải qua CẢ HAI cửa -----------------------------------
+
+
+class _Args:
+    budget = 1.0
+    lag_budget = 0.5
+
+
+def test_verdict_lay_muc_thap_hon_giua_hai_cua():
+    # p99 còn đẹp tới 8 QPS nhưng lag đã vỡ từ 4 - đúng ca mà bench closed-loop
+    # không bao giờ thấy, và là lý do bài open-loop tồn tại.
+    p99 = {1: 0.2, 2: 0.3, 4: 0.4, 8: 0.5}
+    lag = {1: 0.0, 2: 0.1, 4: 9.0, 8: 30.0}
+    assert verdict(p99, lag, _Args())[0] == 2
+
+
+def test_verdict_bang_khong_khi_muc_thap_nhat_da_vo():
+    assert verdict({1: 99.0}, {1: 0.0}, _Args())[0] == 0

@@ -45,12 +45,12 @@ def _print_partial(result):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("wav", help="file wav, tần số nào cũng được - tự hạ về 16kHz")
+    ap.add_argument("wav", help="wav file, any sample rate - downsampled to 16kHz automatically")
     ap.add_argument("--url", default="localhost:8001")
     ap.add_argument("--model", default="asr_bls")
     ap.add_argument("--chunk-ms", type=int, default=DEFAULT_CHUNK_MS)
-    ap.add_argument("--fast", action="store_true", help="gửi dồn, không ngủ giữa các chunk")
-    ap.add_argument("--quiet", action="store_true", help="chỉ in transcript cuối")
+    ap.add_argument("--fast", action="store_true", help="send back-to-back, no sleep between chunks")
+    ap.add_argument("--quiet", action="store_true", help="print only the final transcript")
     args = ap.parse_args()
 
     wav = load_wav_16k(args.wav)
@@ -89,7 +89,7 @@ def main():
             except queue.Empty:
                 break
             if error:
-                raise SystemExit(f"lỗi từ server: {error}")
+                raise SystemExit(f"server error: {error}")
             received += 1
             final = _transcript(result)
             if not args.quiet:
@@ -98,7 +98,7 @@ def main():
     while received < len(parts):
         result, error = q.get(timeout=30)
         if error:
-            raise SystemExit(f"lỗi từ server: {error}")
+            raise SystemExit(f"server error: {error}")
         received += 1
         final = _transcript(result)
         if not args.quiet:

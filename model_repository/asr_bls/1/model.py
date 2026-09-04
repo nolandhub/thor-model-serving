@@ -197,7 +197,7 @@ class TritonPythonModel:
                 end=True,
             )
         except Exception as e:   # noqa: BLE001
-            pb_utils.Logger.log_warn(f"{MODEL_NAME}: không đóng được corrid={corrid}: {e}")
+            pb_utils.Logger.log_warn(f"{MODEL_NAME}: failed to close corrid={corrid}: {e}")
 
     async def _run_rounds(self, ctxs):
         """Mỗi vòng: gọi encoder song song cho mọi stream còn việc, rồi greedy batch.
@@ -241,7 +241,7 @@ class TritonPythonModel:
         """
         now = time.monotonic()
         for k in [k for k, s in self.streams.items() if now - s.last_seen > STATE_TTL_S]:
-            pb_utils.Logger.log_warn(f"{MODEL_NAME}: xoá state mồ côi corrid={k}")
+            pb_utils.Logger.log_warn(f"{MODEL_NAME}: evicting orphaned state corrid={k}")
             stream = self.streams.pop(k)
             asyncio.create_task(self._close(stream, k))
 
@@ -260,7 +260,7 @@ class TritonPythonModel:
         if start or corrid not in self.streams:
             if not start:
                 pb_utils.Logger.log_warn(
-                    f"{MODEL_NAME}: chunk không có state (corrid={corrid}), khởi tạo lại"
+                    f"{MODEL_NAME}: chunk has no state (corrid={corrid}), reinitializing"
                 )
             self.streams[corrid] = _Stream(self)
         stream = self.streams[corrid]
@@ -327,7 +327,7 @@ class TritonPythonModel:
             try:
                 ctxs.append(self._prepare(i, request))
             except Exception as e:   # noqa: BLE001
-                pb_utils.Logger.log_error(f"{MODEL_NAME}: corrid lỗi (prepare): {e}")
+                pb_utils.Logger.log_error(f"{MODEL_NAME}: corrid failed (prepare): {e}")
                 responses[i] = pb_utils.InferenceResponse(error=pb_utils.TritonError(str(e)))
 
         try:
@@ -335,7 +335,7 @@ class TritonPythonModel:
         except Exception as e:   # noqa: BLE001
             # Hỏng giữa chừng thì không biết stream nào đã đi tới đâu. Đóng slot
             # encoder cho TẤT CẢ rồi xoá state - giữ lại là rủi ro cache trôi.
-            pb_utils.Logger.log_error(f"{MODEL_NAME}: lỗi cả batch: {e}")
+            pb_utils.Logger.log_error(f"{MODEL_NAME}: whole batch failed: {e}")
             for c in ctxs:
                 s = self.streams.pop(c.corrid, None)
                 if s is not None:
@@ -350,7 +350,7 @@ class TritonPythonModel:
             try:
                 responses[c.idx] = self._finish(c)
             except Exception as e:   # noqa: BLE001
-                pb_utils.Logger.log_error(f"{MODEL_NAME}: corrid lỗi (finish): {e}")
+                pb_utils.Logger.log_error(f"{MODEL_NAME}: corrid failed (finish): {e}")
                 s = self.streams.pop(c.corrid, None)
                 if s is not None:
                     asyncio.create_task(self._close(s, c.corrid))

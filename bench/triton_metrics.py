@@ -44,7 +44,7 @@ def counters_for_model(samples, model):
         if labels.get("model") == model:
             out[name] = out.get(name, 0.0) + value
     if not out:
-        raise ValueError(f"không có mẫu nào cho model {model!r} - kiểm tên model và server")
+        raise ValueError(f"no samples for model {model!r} - check model name and server")
     return out
 
 

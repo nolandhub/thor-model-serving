@@ -185,18 +185,18 @@ def pct(xs, p):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="sinh bộ doc bench cho reranker")
+    ap = argparse.ArgumentParser(description="generate a reranker bench document set")
     ap.add_argument("--out", default="scripts/hello.json")
     ap.add_argument("--smoke-out", default="scripts/smoke.json",
-                    help="file smoke test 4 đoạn; --smoke-out '' để bỏ qua")
+                    help="4-doc smoke-test file; --smoke-out '' to skip")
     ap.add_argument("--n", type=int, default=128,
-                    help="số doc; phải >= top-k lớn nhất định bench (mặc định phủ tới 128)")
-    ap.add_argument("--median", type=int, default=300, help="token/doc ở trung vị")
-    ap.add_argument("--p95", type=int, default=700, help="token/doc ở phân vị 95")
+                    help="doc count; must be >= the largest top-k you plan to bench (default covers 128)")
+    ap.add_argument("--median", type=int, default=300, help="tokens/doc at the median")
+    ap.add_argument("--p95", type=int, default=700, help="tokens/doc at the 95th percentile")
     ap.add_argument("--min-tokens", type=int, default=40)
-    ap.add_argument("--max-tokens", type=int, default=900)
+    ap.add_argument("--max-tokenthor-model-servings", type=int, default=900)
     ap.add_argument("--seed", type=int, default=20260903)
-    ap.add_argument("--verify-url", help="vd http://127.0.0.1:9012 - đếm token thật qua /tokenize")
+    ap.add_argument("--verify-url", help="e.g. http://127.0.0.1:9012 - count real tokens via /tokenize")
     args = ap.parse_args()
 
 
@@ -215,7 +215,7 @@ def main():
     # lượng mất nghĩa. Chốt chặn ở đây chứ không để phát hiện lúc đọc bảng.
     dup = len(texts) - len(set(texts))
     if dup:
-        raise SystemExit(f"{dup} đoạn bị trùng - nới thêm bộ điền trong FILL rồi sinh lại")
+        raise SystemExit(f"{dup} duplicate docs - widen the FILL pools and regenerate")
 
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(
@@ -226,17 +226,17 @@ def main():
         Path(args.smoke_out).write_text(json.dumps(
             {"query": QUERY, "texts": SMOKE, "raw_scores": False},
             ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"đã ghi {args.smoke_out}: {len(SMOKE)} đoạn smoke test", file=sys.stderr)
+        print(f"wrote {args.smoke_out}: {len(SMOKE)} smoke-test docs", file=sys.stderr)
 
     words = [len(t.split()) for t in texts]
-    print(f"đã ghi {args.out}: {len(texts)} đoạn, {Path(args.out).stat().st_size / 1024:.0f} KB",
+    print(f"wrote {args.out}: {len(texts)} docs, {Path(args.out).stat().st_size / 1024:.0f} KB",
           file=sys.stderr)
-    print(f"  từ/đoạn   min {min(words)} | p50 {pct(words, 50)} | "
+    print(f"  words/doc  min {min(words)} | p50 {pct(words, 50)} | "
           f"p95 {pct(words, 95)} | max {max(words)}", file=sys.stderr)
     if args.verify_url:
         toks = token_lengths(args.verify_url, QUERY, texts)
-        print(f"  token/cặp min {min(toks)} | p50 {pct(toks, 50)} | "
-              f"p95 {pct(toks, 95)} | max {max(toks)} | tổng {sum(toks)}", file=sys.stderr)
+        print(f"  tokens/pair min {min(toks)} | p50 {pct(toks, 50)} | "
+              f"p95 {pct(toks, 95)} | max {max(toks)} | total {sum(toks)}", file=sys.stderr)
 
 
 if __name__ == "__main__":

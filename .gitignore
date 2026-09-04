@@ -21,4 +21,9 @@ bench/results/
 bench/result/
 .gitnexus
 CLAUDE.local.md
+
+# Fixture bench - nặng vài MB tới vài chục MB và không sinh lại được từ repo,
+# nên vừa không nên nằm trong git vừa không được xoá nhầm. hello-v2.json đã
+# được liệt kê sẵn ở trên (dòng 8); giữ nguyên, thêm luật chung cho các bộ sau.
 scripts/hello-v2.json
+scripts/candidates_top128.json

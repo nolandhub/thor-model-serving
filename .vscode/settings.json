@@ -1,1 +1,6 @@
-{}
+{
+  // Repo này viết chú thích và tài liệu bằng tiếng Việt. Code Spell Checker chỉ
+  // có từ điển tiếng Anh nên nó gạch đỏ gần như mọi từ tiếng Việt - hàng chục
+  // cảnh báo cho một comment bình thường, đủ để chôn mất cảnh báo thật.
+  "cSpell.enabled": false
+}

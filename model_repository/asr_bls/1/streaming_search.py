@@ -148,7 +148,7 @@ def greedy_search_batch(
         return states
     b, t_len, _ = encoder_out.shape
     if b != len(states):
-        raise ValueError(f"encoder_out có {b} stream nhưng nhận {len(states)} state")
+        raise ValueError(f"encoder_out has {b} streams but received {len(states)} states")
 
     # (B, C) - gom decoder_out từng stream thành một khối, giữ nguyên thứ tự.
     # Lệch index ở đây là trộn hypothesis giữa các user mà transcript vẫn trông

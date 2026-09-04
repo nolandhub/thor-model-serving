@@ -13,7 +13,7 @@ def pct(values, p):
     làm số đẹp lên ở đúng chỗ đang cần nó xấu.
     """
     if not values:
-        raise ValueError("dãy rỗng - không có percentile")
+        raise ValueError("empty sequence - no percentile")
     ordered = sorted(values)
     rank = max(1, math.ceil(p / 100 * len(ordered)))
     return ordered[min(rank, len(ordered)) - 1]
@@ -40,7 +40,7 @@ def avg_batch(request_count, exec_count):
     xấp xỉ 1.0 thì không gom được gì và BLS chỉ còn lại phần chi phí.
     """
     if exec_count <= 0:
-        raise ValueError(f"exec_count={exec_count} - model chưa chạy lần nào, không tính được")
+        raise ValueError(f"exec_count={exec_count} - model never ran, cannot compute")
     return request_count / exec_count
 
 
@@ -52,7 +52,7 @@ def bls_tax(compute_input_us, compute_infer_us, compute_output_us):
     khỏi compute_infer - nên tỷ số này chính là đồng hồ đo thuế BLS.
     """
     if compute_infer_us <= 0:
-        raise ValueError(f"compute_infer_us={compute_infer_us} - không có compute để so")
+        raise ValueError(f"compute_infer_us={compute_infer_us} - no compute to compare against")
     return (compute_input_us + compute_output_us) / compute_infer_us
 
 
@@ -66,12 +66,12 @@ def diff_counters(before, after):
     out = {}
     for name, v0 in before.items():
         if name not in after:
-            raise ValueError(f"metric {name!r} có ở snapshot đầu nhưng mất ở snapshot sau")
+            raise ValueError(f"metric {name!r} in first snapshot but missing from second")
         delta = after[name] - v0
         if delta < 0:
             raise ValueError(
-                f"metric {name!r} giảm ({v0} -> {after[name]}) - counter đã reset, "
-                "server restart giữa run; bỏ run này"
+                f"metric {name!r} decreased ({v0} -> {after[name]}) - counter reset, "
+                "server restarted mid-run; discard this run"
             )
         out[name] = delta
     return out
@@ -115,7 +115,7 @@ def only_counters(snapshot):
     """Lọc snapshot còn đúng các counter đơn điệu mà bench dùng."""
     missing = [name for name in NEEDED if name not in snapshot]
     if missing:
-        raise ValueError(f"snapshot thiếu counter {missing} - kiểm tên model và version Triton")
+        raise ValueError(f"snapshot missing counters {missing} - check model name and Triton version")
     return {name: snapshot[name] for name in NEEDED}
 
 
@@ -163,7 +163,7 @@ def aggregate(records):
 
     invalid_ccus = {r["ccu"] for r in records} - set(by_ccu)
     if invalid_ccus:
-        raise ValueError(f"CCU {sorted(invalid_ccus)} không còn run hợp lệ nào - chạy lại")
+        raise ValueError(f"CCU {sorted(invalid_ccus)}: no valid run left - re-run")
 
     return {
         ccu: {k: statistics.median([s[k] for s in summaries]) for k in summaries[0]}

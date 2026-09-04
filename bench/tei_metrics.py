@@ -1,6 +1,7 @@
 # ABOUTME: Đọc counter từ /metrics của TEI - nguồn số phía server cho bench rerank
 # ABOUTME: Parse dùng lại của triton_metrics; phần tính là hàm thuần, test được khi Thor tắt
 
+import statistics
 import urllib.request
 
 from bench.triton_metrics import parse_exposition
@@ -35,7 +36,7 @@ def counters(samples):
     missing = [n for n in NEEDED if n not in out]
     if missing:
         raise ValueError(
-            f"/metrics thiếu counter {missing} - kiểm cổng có đúng là TEI không"
+            f"/metrics missing counters {missing} - check the port really is TEI"
         )
     return out
 
@@ -56,6 +57,41 @@ def send_lags(pick_times, deadlines):
     và không bao giờ đuổi kịp - đó là sập, dù p99 của từng request vẫn đẹp.
     """
     return [p - d for p, d in zip(pick_times, deadlines)]
+
+
+def unaccounted_ms(mean_ms, s):
+    """Phần độ trễ client THẤY mà không metric TEI nào nhận.
+
+    mean − (queue + infer + tokenize). Đây là HTTP, serialize/deserialize JSON
+    của cả trăm doc, và dựng response - những chặng nằm ngoài mọi te_request_*.
+    Đo lần đầu ở top-k 100 ra 122ms trên tổng 539ms: lớn hơn cả queue, mà bảng
+    hồi đó không có cột nào cho nó nên nó vô hình.
+
+    KHÔNG kẹp về 0 khi âm. Số âm không phải lỗi làm tròn, nó là bằng chứng ba
+    chặng kia đang chồng lấn (vd durations ghi theo từng cặp rồi cộng lại, mỗi
+    cặp trong batch cùng nhận trọn thời gian của batch) - lúc đó cách đọc bảng
+    phải đổi, và giấu dấu hiệu đó đi thì không ai truy ra. Đối chiếu với cột
+    pairs/req để biết mình đang ở ngữ nghĩa nào.
+    """
+    return mean_ms - (
+        s["queue_ms_per_req"] + s["infer_ms_per_req"] + s["tokenize_ms_per_req"]
+    )
+
+
+def tail_lag(lags, frac=0.1):
+    """Độ trễ phát của phần CUỐI run - đứng yên = theo kịp, tăng dần = đang dồn.
+
+    Median của `frac` cuối chứ không lấy đúng mẫu chót như drift bên ASR: mẫu
+    chót rơi trúng một lần GC hay một nhịp OS treo là số rác, mà kết luận "sập
+    hay không" lại treo vào đúng nó. Median một dải cuối bền hơn, cùng ý nghĩa.
+
+    Cùng vai trò với `drift cuối` của bench ASR, và cũng quan trọng hơn p99 vì
+    lý do đó: p99 nhìn từng request rời rạc, còn số này nhìn xu hướng tích luỹ.
+    """
+    if not lags:
+        raise ValueError("no lag samples - empty run")
+    n = max(1, int(len(lags) * frac))
+    return statistics.median(lags[-n:])
 
 
 def server_side(delta):

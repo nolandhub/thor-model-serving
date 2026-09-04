@@ -26,7 +26,7 @@ for arg in "$@"; do
   case "$arg" in
     --go)     mode=() ;;
     --delete) extra+=(--delete) ;;
-    *) echo "tham số lạ: $arg" >&2; exit 2 ;;
+    *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
 
@@ -54,5 +54,5 @@ rsync -avhP --chmod=Da+rx,Fa+r --human-readable "${mode[@]}" "${extra[@]}" \
 
 if [ ${#mode[@]} -ne 0 ]; then
   echo
-  echo "^ mới chỉ là dry-run. Chạy lại với --go để đồng bộ thật."
+  echo "^ dry-run only. Re-run with --go to actually sync."
 fi
